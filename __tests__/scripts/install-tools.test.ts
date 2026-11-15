@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -23,6 +24,20 @@ const stub = (dir: string, name: string, body: string) => {
   writeFileSync(file, `#!/bin/bash\n${body}\n`);
   chmodSync(file, 0o755);
 };
+
+const loggingCurlBody = (log: string) => `
+echo "$*" >> "${log}"
+out=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "-o" ] && out="$2"
+  shift
+done
+if [ -n "$out" ] && [ "$out" != "/dev/null" ]; then
+  printf '#!/bin/bash\\necho "cloudflared 9.9.9"\\n' > "$out"
+fi
+exit 0`;
+
+const URL_LAST = /\shttps:\/\/\S+$/;
 
 const versionStub = (name: string, extra = "") => `
 ${extra}
@@ -85,6 +100,32 @@ exit 0`,
     const source = readFileSync(SCRIPT, "utf8");
     expect(source).toContain("--proto '=https' --tlsv1.2 --retry 3");
     expect(source).not.toMatch(/^\s+curl /m);
+  });
+
+  it("passes a URL to every gh download", () => {
+    const log = join(root, "curl.log");
+    stub(bin, "gh", 'echo "gh version 1.0.0"');
+    stub(bin, "curl", loggingCurlBody(log));
+    const result = run({ SKIP_AUTH: "1" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("checksum mismatch");
+    const calls = readFileSync(log, "utf8").trim().split("\n");
+    expect(calls).toHaveLength(2);
+    for (const call of calls) expect(call).toMatch(URL_LAST);
+  });
+
+  it("installs a missing tool and cleans its temp dir without errors", () => {
+    const log = join(root, "curl.log");
+    rmSync(join(bin, "cloudflared"));
+    stub(bin, "curl", loggingCurlBody(log));
+    const tmpRoot = join(root, "tmp");
+    mkdirSync(tmpRoot);
+    const result = run({ SKIP_AUTH: "1", TMPDIR: tmpRoot });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain("unbound variable");
+    expect(result.stdout).toContain("cloudflared installed");
+    expect(readFileSync(log, "utf8")).toMatch(/cloudflared-linux-\w+$/m);
+    expect(readdirSync(tmpRoot)).toEqual([]);
   });
 
   it("skips installed tools and writes the README without downloading", () => {
@@ -151,7 +192,8 @@ exit 0`,
 esac
 exit 0`,
     );
-    stub(bin, "curl", "exit 0");
+    const log = join(root, "curl.log");
+    stub(bin, "curl", loggingCurlBody(log));
     mkdirSync(join(root, "ts"));
     const socket = join(root, "ts", "tailscaled.sock");
     const server = createServer();
@@ -171,5 +213,8 @@ exit 0`,
       "browse: BB_API_KEY from bws works",
     );
     expect(existsSync(join(home, "README.md"))).toBe(true);
+    expect(readFileSync(log, "utf8").trim()).toMatch(
+      /\shttps:\/\/api\.browserbase\.com\/v1\/projects$/,
+    );
   });
 });

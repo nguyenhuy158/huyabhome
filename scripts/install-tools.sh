@@ -33,6 +33,12 @@ SUDO=""
 
 CURL=(curl -fsSL --proto '=https' --tlsv1.2 --retry 3)
 
+TMP_PATHS=()
+cleanup() {
+  [ "${#TMP_PATHS[@]}" -eq 0 ] || rm -rf "${TMP_PATHS[@]}"
+}
+trap cleanup EXIT
+
 bws_secret() {
   bws secret list | python3 -I -c '
 import json, sys
@@ -57,7 +63,7 @@ install_bws() {
   version="$("${CURL[@]}" -H 'User-Agent: install-tools' https://crates.io/api/v1/crates/bws \
     | python3 -c 'import sys,json;print(json.load(sys.stdin)["crate"]["max_stable_version"])')"
   workdir="$(mktemp -d)"
-  trap 'rm -rf "$workdir"' RETURN
+  TMP_PATHS+=("$workdir")
   "${CURL[@]}" -o "$workdir/bws.zip" \
     "https://github.com/bitwarden/sdk-sm/releases/download/bws-v${version}/bws-${BWS_TARGET}-${version}.zip"
   python3 -I -c 'import sys,zipfile;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
@@ -91,9 +97,9 @@ install_gh() {
   fi
   asset="gh_${version}_linux_${GH_ARCH}.tar.gz"
   workdir="$(mktemp -d)"
-  trap 'rm -rf "$workdir"' RETURN
+  TMP_PATHS+=("$workdir")
   "${CURL[@]}" -o "$workdir/$asset" "https://github.com/cli/cli/releases/download/${tag}/${asset}"
-  "${CURL[@]}" -o "$workdir/checksums.txt""https://github.com/cli/cli/releases/download/${tag}/gh_${version}_checksums.txt"
+  "${CURL[@]}" -o "$workdir/checksums.txt" "https://github.com/cli/cli/releases/download/${tag}/gh_${version}_checksums.txt"
   [ "$(sha256_of "$workdir/$asset")" = "$(awk -v f="$asset" '$2 == f {print $1}' "$workdir/checksums.txt")" ] \
     || { echo "gh: checksum mismatch for $asset" >&2; exit 1; }
   tar -xzf "$workdir/$asset" -C "$workdir"
@@ -148,7 +154,7 @@ install_cloudflared() {
     Linux)
       local workdir
       workdir="$(mktemp -d)"
-      trap 'rm -rf "$workdir"' RETURN
+      TMP_PATHS+=("$workdir")
       "${CURL[@]}" -o "$workdir/cloudflared" \
         "https://github.com/cloudflare/cloudflared/releases/latest/download/${CLOUDFLARED_ASSET}"
       $SUDO install -m 755 "$workdir/cloudflared" "$INSTALL_DIR/cloudflared"
@@ -196,7 +202,7 @@ verify_browserbase_key() {
   can_authenticate || { echo "browse: skipped key check (no BWS_ACCESS_TOKEN or SKIP_AUTH=1)"; return; }
   local key
   key="$(bws_secret BB_API_KEY)"
-  if "${CURL[@]}" -o /dev/null -H "X-BB-API-Key: $key"https://api.browserbase.com/v1/projects; then
+  if "${CURL[@]}" -o /dev/null -H "X-BB-API-Key: $key" https://api.browserbase.com/v1/projects; then
     echo "browse: BB_API_KEY from bws works"
     echo "Use it in your shell with:"
     echo "  export BB_API_KEY=\"\$(bws secret list | python3 -I -c 'import json,sys;print({i[\"key\"]:i[\"value\"] for i in json.load(sys.stdin)}[\"BB_API_KEY\"])')\""
@@ -261,7 +267,7 @@ login_tailscale() {
   local keyfile
   keyfile="$(mktemp)"
   chmod 600 "$keyfile"
-  trap 'rm -f "$keyfile"' RETURN
+  TMP_PATHS+=("$keyfile")
   if [ -n "${TS_AUTH_KEY:-}" ]; then
     printf '%s' "$TS_AUTH_KEY" > "$keyfile"
   else
