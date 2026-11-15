@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Installs bws (Bitwarden Secrets Manager CLI), gh (GitHub CLI, latest release),
-# cf (Cloudflare CLI, beta), wrangler, cloudflared, browse (Browserbase CLI) and Tailscale.
+# cf (Cloudflare CLI, beta), wrangler, biome (latest, npm), cloudflared, browse (Browserbase CLI)
+# and Tailscale.
 # Linux x86_64 / arm64 and macOS. Idempotent: skips tools already installed.
-# gh is the exception: it is upgraded when a newer release exists.
+# gh and biome are the exception: they are upgraded when a newer release exists.
 #
 # Auth model:
 #   bws        reads its token from the BWS_ACCESS_TOKEN env var.
@@ -133,6 +134,20 @@ install_wrangler() {
   command -v npm >/dev/null 2>&1 || { echo "npm not found; install Node >= ${NODE_MIN_MAJOR}.${NODE_MIN_MINOR}" >&2; exit 1; }
   npm install --global wrangler
   echo "wrangler installed: $(wrangler --version | head -1)"
+}
+
+install_biome() {
+  command -v npm >/dev/null 2>&1 || { echo "npm not found; install Node >= ${NODE_MIN_MAJOR}.${NODE_MIN_MINOR}" >&2; exit 1; }
+  local installed latest
+  installed="$(command -v biome >/dev/null 2>&1 && biome --version | sed -n '1s/^Version: *//p' || true)"
+  latest="$(npm view @biomejs/biome version)"
+  [ -n "$latest" ] || { echo "biome: could not find the latest version" >&2; exit 1; }
+  if [ "$installed" = "$latest" ]; then
+    echo "biome already at latest: $latest"
+    return
+  fi
+  npm install --global "@biomejs/biome@${latest}"
+  echo "biome installed: $(biome --version | head -1) (was: ${installed:-none})"
 }
 
 install_browserbase() {
@@ -350,6 +365,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | gh (GitHub CLI) | $(tool_version gh) | latest release; \`gh auth login\` or \`GH_TOKEN\` needed |
 | cf (Cloudflare CLI, beta) | $(tool_version cf) | uses \`CLOUDFLARE_API_TOKEN\` from bws |
 | wrangler | $(tool_version wrangler) | uses \`CLOUDFLARE_API_TOKEN\` from bws |
+| biome | $(tool_version biome) | latest release; upgraded on every run |
 | cloudflared | $(tool_version cloudflared) | tunnels; login or token needed to run one |
 | browse (Browserbase CLI) | $(tool_version browse) | uses \`BB_API_KEY\` from bws |
 | tailscale | $(tool_version tailscale) | $(tailscale_state) |
@@ -397,6 +413,7 @@ main() {
   install_gh
   install_cf
   install_wrangler
+  install_biome
   install_cloudflared
   install_browserbase
   install_tailscale
