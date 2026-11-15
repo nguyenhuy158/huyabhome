@@ -205,3 +205,6 @@ assumptions. Always run `pnpm check` and `pnpm build` after changes.
 Design UI/UX to fit inside a single viewport by default. Avoid page-level
 scrolling; use compact layouts, tabs, panes, or contained internal lists when
 content can overflow.
+Never commit secrets. Every machine runs huyabhome `scripts/install-tools.sh`,
+which installs gitleaks and a global pre-commit hook that scans staged changes.
+Do not bypass it: no `git commit --no-verify`, no change to `core.hooksPath`.
