@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs bws (Bitwarden Secrets Manager CLI), gh (GitHub CLI, latest release),
 # mise (latest release), cf (Cloudflare CLI, beta), wrangler, biome (latest, npm), cloudflared,
-# browse (Browserbase CLI) and Tailscale.
+# browse (Browserbase CLI), gitleaks and Tailscale. Also sets the global git identity
+# and a global pre-commit hook that scans staged changes with gitleaks.
 # Linux x86_64 / arm64 and macOS. Idempotent: skips tools already installed.
 # gh, mise and biome are the exception: they are upgraded when a newer release exists.
 #
@@ -20,10 +21,13 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 NODE_MIN_MAJOR=22
 NODE_MIN_MINOR=18
+GIT_USER_NAME="huy"
+GIT_USER_EMAIL="huy.ntq02@gmail.com"
+GIT_HOOKS_DIR="${GIT_HOOKS_DIR:-$HOME/.config/git/hooks}"
 
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64"; GH_ARCH="amd64"; MISE_ARCH="x64" ;;
-  Linux-aarch64) BWS_TARGET="aarch64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-arm64"; GH_ARCH="arm64"; MISE_ARCH="arm64" ;;
+  Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64"; GH_ARCH="amd64"; MISE_ARCH="x64"; GITLEAKS_ARCH="x64" ;;
+  Linux-aarch64) BWS_TARGET="aarch64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-arm64"; GH_ARCH="arm64"; MISE_ARCH="arm64"; GITLEAKS_ARCH="arm64" ;;
   Darwin-arm64)  BWS_TARGET="aarch64-apple-darwin" ;;
   Darwin-x86_64) BWS_TARGET="x86_64-apple-darwin" ;;
   *) echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
@@ -136,6 +140,61 @@ install_mise() {
     || { echo "mise: checksum mismatch for $asset" >&2; exit 1; }
   $SUDO install -m 755 "$workdir/$asset" "$INSTALL_DIR/mise"
   echo "mise installed: $(mise --version | head -1) (was: ${installed:-none})"
+}
+
+install_gitleaks() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    echo "gitleaks already installed: $(gitleaks version | head -1)"
+    return
+  fi
+  case "$(uname -s)" in
+    Darwin)
+      command -v brew >/dev/null 2>&1 || { echo "Homebrew not found; install it first (https://brew.sh)" >&2; exit 1; }
+      brew install gitleaks
+      echo "gitleaks installed: $(gitleaks version | head -1)"
+      return
+      ;;
+  esac
+  local tag version workdir asset
+  tag="$(git ls-remote --tags --refs https://github.com/gitleaks/gitleaks 'v*' \
+    | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+  [ -n "$tag" ] || { echo "gitleaks: could not find the latest release tag" >&2; exit 1; }
+  version="${tag#v}"
+  asset="gitleaks_${version}_linux_${GITLEAKS_ARCH}.tar.gz"
+  workdir="$(mktemp -d)"
+  TMP_PATHS+=("$workdir")
+  "${CURL[@]}" -o "$workdir/$asset" "https://github.com/gitleaks/gitleaks/releases/download/${tag}/${asset}"
+  "${CURL[@]}" -o "$workdir/checksums.txt" "https://github.com/gitleaks/gitleaks/releases/download/${tag}/gitleaks_${version}_checksums.txt"
+  [ "$(sha256_of "$workdir/$asset")" = "$(awk -v f="$asset" '$2 == f {print $1}' "$workdir/checksums.txt")" ] \
+    || { echo "gitleaks: checksum mismatch for $asset" >&2; exit 1; }
+  tar -xzf "$workdir/$asset" -C "$workdir" gitleaks
+  $SUDO install -m 755 "$workdir/gitleaks" "$INSTALL_DIR/gitleaks"
+  echo "gitleaks installed: $(gitleaks version | head -1)"
+}
+
+setup_git_identity() {
+  command -v git >/dev/null 2>&1 || { echo "git not found; skipped git identity" >&2; return 1; }
+  git config --global user.name "$GIT_USER_NAME"
+  git config --global user.email "$GIT_USER_EMAIL"
+  echo "git: global identity set to $GIT_USER_NAME <$GIT_USER_EMAIL>"
+}
+
+setup_gitleaks_hook() {
+  local current
+  current="$(git config --global --get core.hooksPath || true)"
+  if [ -n "$current" ] && [ "$current" != "$GIT_HOOKS_DIR" ]; then
+    echo "gitleaks hook: skipped, global core.hooksPath already points to $current" >&2
+    return 0
+  fi
+  mkdir -p "$GIT_HOOKS_DIR"
+  cat > "$GIT_HOOKS_DIR/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+command -v gitleaks >/dev/null 2>&1 || { echo "pre-commit: gitleaks not found, scan skipped" >&2; exit 0; }
+exec gitleaks git --pre-commit --staged --redact --verbose
+HOOK
+  chmod 755 "$GIT_HOOKS_DIR/pre-commit"
+  git config --global core.hooksPath "$GIT_HOOKS_DIR"
+  echo "gitleaks hook: pre-commit scan enabled for every repo ($GIT_HOOKS_DIR)"
 }
 
 install_cf() {
@@ -363,6 +422,7 @@ tool_version() {
   command -v "$name" >/dev/null 2>&1 || { echo "not installed"; return; }
   case "$name" in
     tailscale) tailscale version 2>/dev/null | head -1 ;;
+    gitleaks)  gitleaks version 2>/dev/null | head -1 ;;
     *)         "$name" --version 2>/dev/null | head -1 ;;
   esac
 }
@@ -399,6 +459,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | mise | $(tool_version mise) | latest release, checksum verified; upgraded on every run |
 | cloudflared | $(tool_version cloudflared) | tunnels; login or token needed to run one |
 | browse (Browserbase CLI) | $(tool_version browse) | uses \`BB_API_KEY\` from bws |
+| gitleaks | $(tool_version gitleaks) | secret scanner; pre-commit hook in \`$GIT_HOOKS_DIR\` |
 | tailscale | $(tool_version tailscale) | $(tailscale_state) |
 
 ## Where the tokens come from
@@ -448,7 +509,10 @@ main() {
   install_biome
   install_cloudflared
   install_browserbase
+  install_gitleaks
   install_tailscale
+  setup_git_identity || failed=1
+  setup_gitleaks_hook || failed=1
   verify_cf_token || failed=1
   verify_browserbase_key || failed=1
   login_tailscale
