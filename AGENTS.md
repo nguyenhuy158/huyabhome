@@ -139,9 +139,13 @@ Deploys are automatic. Pushing to `main` is the whole release process — never
 run `wrangler deploy` by hand unless CI is broken and you have said so out loud.
 
 - **Trigger**: push to `main` → Cloudflare Workers Builds → live in ~2.5 min.
-  Only `main` deploys (`branch_includes: ["main"]`); previews are disabled, so
-  feature branches and PRs build nothing.
-- **Pipeline**: `pnpm install --frozen-lockfile` → `pnpm run build` →
+  Only `main` deploys to production (trigger `Deploy default branch`).
+- **Other branches and PRs** also build (trigger `Deploy non-production
+  branches`, every branch except `main`). It runs `npx wrangler versions
+  upload`, which uploads a version and changes nothing in production. The PR
+  shows a `Workers Builds: huyabhome` check and a bot comment; a green one does
+  not mean the PR is live.
+- **Pipeline** (`main`): `pnpm install --frozen-lockfile` → `pnpm run build` →
   `npx wrangler deploy --config build/server/wrangler.json`
 - **Worker name is `huyabhome`** (id `004b1576…`). It was `case-converter`, renamed
   in place on 2026-11-15 with the Edit Worker API (`PATCH
