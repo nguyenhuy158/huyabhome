@@ -33,6 +33,8 @@ try {
       "127.0.0.1",
       "--port",
       PORT,
+      "--persist-to",
+      ".wrangler/state",
     ],
     readyUrl: `${BASE}/`,
   });
