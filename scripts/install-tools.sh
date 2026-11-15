@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Installs bws (Bitwarden Secrets Manager CLI), cf (Cloudflare CLI, beta), wrangler,
-# cloudflared and Tailscale.
+# Installs bws (Bitwarden Secrets Manager CLI), gh (GitHub CLI, latest release),
+# cf (Cloudflare CLI, beta), wrangler, cloudflared, browse (Browserbase CLI) and Tailscale.
 # Linux x86_64 / arm64 and macOS. Idempotent: skips tools already installed.
+# gh is the exception: it is upgraded when a newer release exists.
 #
 # Auth model:
 #   bws        reads its token from the BWS_ACCESS_TOKEN env var.
 #   cf         uses CLOUDFLARE_API_TOKEN, read from the bws secret of that name.
+#   browse     uses BB_API_KEY, read from the bws secret of that name.
 #   tailscale  logs in with the TS_AUTH_KEY env var, else the TS_AUTH_KEY bws secret.
 # Without BWS_ACCESS_TOKEN (or TS_AUTH_KEY for tailscale) the tools are installed but not authenticated.
 # In containers without TUN/systemd tailscaled runs in userspace mode and ~/.ssh/config
@@ -19,8 +21,8 @@ NODE_MIN_MAJOR=22
 NODE_MIN_MINOR=18
 
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64" ;;
-  Linux-aarch64) BWS_TARGET="aarch64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-arm64" ;;
+  Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64"; GH_ARCH="amd64" ;;
+  Linux-aarch64) BWS_TARGET="aarch64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-arm64"; GH_ARCH="arm64" ;;
   Darwin-arm64)  BWS_TARGET="aarch64-apple-darwin" ;;
   Darwin-x86_64) BWS_TARGET="x86_64-apple-darwin" ;;
   *) echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
@@ -62,6 +64,41 @@ install_bws() {
   echo "bws installed: $(bws --version)"
 }
 
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
+install_gh() {
+  case "$(uname -s)" in
+    Darwin)
+      command -v brew >/dev/null 2>&1 || { echo "Homebrew not found; install it first (https://brew.sh)" >&2; exit 1; }
+      if command -v gh >/dev/null 2>&1; then brew upgrade gh || true; else brew install gh; fi
+      echo "gh installed: $(gh --version | head -1)"
+      return
+      ;;
+  esac
+  local tag version installed workdir asset
+  tag="$(git ls-remote --tags --refs https://github.com/cli/cli 'v*' \
+    | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+  [ -n "$tag" ] || { echo "gh: could not find the latest release tag" >&2; exit 1; }
+  version="${tag#v}"
+  installed="$(command -v gh >/dev/null 2>&1 && gh --version | sed -n '1s/^gh version \([0-9.]*\).*/\1/p' || true)"
+  if [ "$installed" = "$version" ]; then
+    echo "gh already at latest: $version"
+    return
+  fi
+  asset="gh_${version}_linux_${GH_ARCH}.tar.gz"
+  workdir="$(mktemp -d)"
+  trap 'rm -rf "$workdir"' RETURN
+  curl -fsSL -o "$workdir/$asset" "https://github.com/cli/cli/releases/download/${tag}/${asset}"
+  curl -fsSL -o "$workdir/checksums.txt" "https://github.com/cli/cli/releases/download/${tag}/gh_${version}_checksums.txt"
+  [ "$(sha256_of "$workdir/$asset")" = "$(awk -v f="$asset" '$2 == f {print $1}' "$workdir/checksums.txt")" ] \
+    || { echo "gh: checksum mismatch for $asset" >&2; exit 1; }
+  tar -xzf "$workdir/$asset" -C "$workdir"
+  $SUDO install -m 755 "$workdir/gh_${version}_linux_${GH_ARCH}/bin/gh" "$INSTALL_DIR/gh"
+  echo "gh installed: $(gh --version | head -1) (was: ${installed:-none})"
+}
+
 install_cf() {
   if command -v cf >/dev/null 2>&1 && cf --version 2>/dev/null | grep -qi cloudflare; then
     echo "cf already installed: $(cf --version)"
@@ -88,6 +125,16 @@ install_wrangler() {
   command -v npm >/dev/null 2>&1 || { echo "npm not found; install Node >= ${NODE_MIN_MAJOR}.${NODE_MIN_MINOR}" >&2; exit 1; }
   npm install --global wrangler
   echo "wrangler installed: $(wrangler --version | head -1)"
+}
+
+install_browserbase() {
+  if npm ls --global --depth=0 browse >/dev/null 2>&1; then
+    echo "browse already installed: $(browse --version | head -1)"
+    return
+  fi
+  command -v npm >/dev/null 2>&1 || { echo "npm not found; install Node >= ${NODE_MIN_MAJOR}.${NODE_MIN_MINOR}" >&2; exit 1; }
+  npm install --global browse
+  echo "browse installed: $(browse --version | head -1)"
 }
 
 install_cloudflared() {
@@ -139,6 +186,20 @@ verify_cf_token() {
     echo "  export CLOUDFLARE_API_TOKEN=\"\$(bws secret list | python3 -I -c 'import json,sys;print({i[\"key\"]:i[\"value\"] for i in json.load(sys.stdin)}[\"CLOUDFLARE_API_TOKEN\"])')\""
   else
     echo "cf: CLOUDFLARE_API_TOKEN from bws was rejected" >&2
+    return 1
+  fi
+}
+
+verify_browserbase_key() {
+  can_authenticate || { echo "browse: skipped key check (no BWS_ACCESS_TOKEN or SKIP_AUTH=1)"; return; }
+  local key
+  key="$(bws_secret BB_API_KEY)"
+  if curl -fsS -o /dev/null -H "X-BB-API-Key: $key" https://api.browserbase.com/v1/projects; then
+    echo "browse: BB_API_KEY from bws works"
+    echo "Use it in your shell with:"
+    echo "  export BB_API_KEY=\"\$(bws secret list | python3 -I -c 'import json,sys;print({i[\"key\"]:i[\"value\"] for i in json.load(sys.stdin)}[\"BB_API_KEY\"])')\""
+  else
+    echo "browse: BB_API_KEY from bws was rejected" >&2
     return 1
   fi
 }
@@ -278,9 +339,11 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | Tool | Version | State |
 |---|---|---|
 | bws (Bitwarden Secrets Manager) | $(tool_version bws) | token in env: $bws_auth |
+| gh (GitHub CLI) | $(tool_version gh) | latest release; \`gh auth login\` or \`GH_TOKEN\` needed |
 | cf (Cloudflare CLI, beta) | $(tool_version cf) | uses \`CLOUDFLARE_API_TOKEN\` from bws |
 | wrangler | $(tool_version wrangler) | uses \`CLOUDFLARE_API_TOKEN\` from bws |
 | cloudflared | $(tool_version cloudflared) | tunnels; login or token needed to run one |
+| browse (Browserbase CLI) | $(tool_version browse) | uses \`BB_API_KEY\` from bws |
 | tailscale | $(tool_version tailscale) | $(tailscale_state) |
 
 ## Where the tokens come from
@@ -289,6 +352,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 |---|---|---|
 | bws | \`BWS_ACCESS_TOKEN\` | environment variable (set it yourself) |
 | cf | \`CLOUDFLARE_API_TOKEN\` | bws secret with the same name |
+| browse | \`BB_API_KEY\` | bws secret with the same name |
 | tailscale | \`TS_AUTH_KEY\` | environment variable, else bws secret; used by \`tailscale up\` |
 
 No secret is stored in this file or in the script.
@@ -311,7 +375,7 @@ sudo tailscale up --auth-key=file:/path/to/keyfile
 ## Run it again
 
 \`\`\`bash
-curl -fsSL https://raw.githubusercontent.com/nguyenhuy158/mytools/main/scripts/install-tools.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nguyenhuy158/huyabhome/main/scripts/install-tools.sh | bash
 \`\`\`
 
 Set \`SKIP_AUTH=1\` to install only, without logging in.
@@ -320,11 +384,14 @@ README
 }
 
 install_bws
+install_gh
 install_cf
 install_wrangler
 install_cloudflared
+install_browserbase
 install_tailscale
 verify_cf_token
+verify_browserbase_key
 login_tailscale
 setup_tailnet_ssh
 write_readme
