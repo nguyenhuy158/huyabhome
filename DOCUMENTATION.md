@@ -61,7 +61,7 @@ A comprehensive collection of essential online tools built with modern web techn
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd toolhub
+   cd huyabhome
    ```
 
 2. **Install dependencies**
@@ -135,7 +135,7 @@ The project is configured to deploy to `huyab.cfd` (apex) and `case.huyab.cfd` v
 ## 📁 Project Structure
 
 ```
-toolhub/
+huyabhome/
 ├── app/                          # Main application code
 │   ├── components/              # Reusable UI components
 │   │   ├── ButtonGroup.tsx     # Button group component
