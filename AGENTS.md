@@ -143,11 +143,14 @@ run `wrangler deploy` by hand unless CI is broken and you have said so out loud.
   feature branches and PRs build nothing.
 - **Pipeline**: `pnpm install --frozen-lockfile` → `pnpm run build` →
   `npx wrangler deploy --config build/server/wrangler.json`
-- **Worker name is `case-converter`** — a legacy name from when this was only a
-  case converter. Do **not** rename it. Renaming creates a *new* Worker and
-  orphans the Durable Object state in `ONLINE_COUNTER`. (`LotoGameRoom` was
+- **Worker name is `huyabhome`** (id `004b1576…`). It was `case-converter`, renamed
+  in place on 2026-11-15 with the Edit Worker API (`PATCH
+  /accounts/{id}/workers/workers/{worker_id}`), so versions, domains and the
+  `ONLINE_COUNTER` Durable Object state stayed. Do not rename by deploying under a
+  new `name`: that creates a *new* Worker. `name` in `wrangler.jsonc` must stay
+  equal to the dashboard name. (`LotoGameRoom` was
   deleted on purpose by migration `v3` when loto moved to the games repo.)
-- **Rollback**: `npx wrangler rollback --name case-converter`. Cloudflare
+- **Rollback**: `npx wrangler rollback --name huyabhome`. Cloudflare
   retains every version, so rollback never needs a local checkout.
 
 ### Traps that have already caused outages
