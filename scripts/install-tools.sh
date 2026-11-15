@@ -10,6 +10,8 @@
 # Auth model:
 #   bws        reads its token from the BWS_ACCESS_TOKEN env var.
 #   cf         uses CLOUDFLARE_API_TOKEN, read from the bws secret of that name.
+#              New shells export it too: ~/.config/install-tools/env.sh (no secret stored) is
+#              sourced from ~/.bashrc / ~/.zshrc and reads bws when BWS_ACCESS_TOKEN is set.
 #   browse     uses BB_API_KEY, read from the bws secret of that name.
 #   tailscale  logs in with the TS_AUTH_KEY env var, else the TS_AUTH_KEY bws secret.
 # Without BWS_ACCESS_TOKEN (or TS_AUTH_KEY for tailscale) the tools are installed but not authenticated.
@@ -447,6 +449,32 @@ PY
   echo "ssh: tailnet hosts routed through tailscale nc ($config)"
 }
 
+setup_shell_env() {
+  local env_dir="${ENV_DIR:-$HOME/.config/install-tools}"
+  local env_file="$env_dir/env.sh"
+  mkdir -p "$env_dir"
+  cat > "$env_file" <<'ENVSH'
+if [ -n "${BWS_ACCESS_TOKEN:-}" ] && [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && command -v bws >/dev/null 2>&1; then
+  _cf_token="$(bws secret list 2>/dev/null | python3 -I -c '
+import json, sys
+secrets = {item["key"]: item["value"] for item in json.load(sys.stdin)}
+sys.stdout.write(secrets.get("CLOUDFLARE_API_TOKEN", ""))
+' 2>/dev/null)"
+  [ -z "$_cf_token" ] || export CLOUDFLARE_API_TOKEN="$_cf_token"
+  unset _cf_token
+fi
+ENVSH
+  chmod 600 "$env_file"
+  local default_rc=".bashrc" rc source_line="[ -f \"$env_file\" ] && . \"$env_file\""
+  [ "$(uname -s)" != "Darwin" ] || default_rc=".zshrc"
+  [ -e "$HOME/$default_rc" ] || touch "$HOME/$default_rc"
+  for rc in .bashrc .zshrc; do
+    [ -e "$HOME/$rc" ] || continue
+    grep -qF "$env_file" "$HOME/$rc" || printf '\n# install-tools: CLOUDFLARE_API_TOKEN from bws\n%s\n' "$source_line" >> "$HOME/$rc"
+  done
+  echo "shell: new shells export CLOUDFLARE_API_TOKEN from bws via $env_file"
+}
+
 tool_version() {
   local name="$1"
   command -v "$name" >/dev/null 2>&1 || { echo "not installed"; return; }
@@ -498,7 +526,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | Tool | Token | Source |
 |---|---|---|
 | bws | \`BWS_ACCESS_TOKEN\` | environment variable (set it yourself) |
-| cf | \`CLOUDFLARE_API_TOKEN\` | bws secret with the same name |
+| cf, wrangler | \`CLOUDFLARE_API_TOKEN\` | bws secret with the same name; new shells export it via \`~/.config/install-tools/env.sh\` |
 | browse | \`BB_API_KEY\` | bws secret with the same name |
 | tailscale | \`TS_AUTH_KEY\` | environment variable, else bws secret; used by \`tailscale up\` |
 
@@ -549,6 +577,7 @@ main() {
   verify_browserbase_key || failed=1
   login_tailscale
   setup_tailnet_ssh
+  setup_shell_env
   write_readme
   return "$failed"
 }
