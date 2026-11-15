@@ -17,7 +17,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT = join(__dirname, "../../scripts/install-tools.sh");
 const MAIN_CALL = 'main "$@"';
-const STUB_NAMES = ["bws", "gh", "cf", "wrangler", "cloudflared", "browse"];
+const STUB_NAMES = [
+  "bws",
+  "gh",
+  "cf",
+  "wrangler",
+  "cloudflared",
+  "browse",
+  "gitleaks",
+];
 const SYSTEM_PATH = "/usr/bin:/bin";
 
 const stub = (dir: string, name: string, body: string) => {
@@ -217,6 +225,7 @@ exit 0`,
       "mise",
       "cloudflared",
       "browse",
+      "gitleaks",
     ]) {
       expect(result.stdout).toMatch(new RegExp(`${name} already`));
     }
@@ -235,6 +244,51 @@ exit 0`,
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(home, "README.md"), "utf8")).toBe("mine\n");
     expect(existsSync(join(home, "README.install-tools.md"))).toBe(true);
+  });
+
+  it("sets the git identity and a gitleaks pre-commit hook", () => {
+    const cfg = join(root, "gitcfg");
+    stub(
+      bin,
+      "git",
+      `if [ "$1" = config ]; then
+  shift; [ "$1" = --global ] && shift
+  if [ "$1" = --get ]; then grep "^$2=" "${cfg}" | cut -d= -f2-; exit 0; fi
+  echo "$1=$2" >> "${cfg}"; exit 0
+fi
+printf "abc\\trefs/tags/v9.9.9\\n"`,
+    );
+    stub(bin, "gitleaks", 'echo "args: $*"');
+    writeFileSync(cfg, "");
+    const hooks = join(root, "hooks");
+    const result = run({ SKIP_AUTH: "1", GIT_HOOKS_DIR: hooks });
+    expect(result.status, result.stderr).toBe(0);
+    const config = readFileSync(cfg, "utf8");
+    expect(config).toContain("user.name=huy");
+    expect(config).toContain("user.email=huy.ntq02@gmail.com");
+    expect(config).toContain(`core.hooksPath=${hooks}`);
+    const hook = spawnSync("bash", [join(hooks, "pre-commit")], {
+      encoding: "utf8",
+      env: { PATH: `${bin}:${SYSTEM_PATH}` },
+    });
+    expect(hook.stdout).toContain("git --pre-commit --staged");
+  });
+
+  it("keeps an existing global core.hooksPath", () => {
+    stub(
+      bin,
+      "git",
+      `if [ "$1" = config ]; then
+  [ "$4" = core.hooksPath ] && echo /other/hooks
+  exit 0
+fi
+printf "abc\\trefs/tags/v9.9.9\\n"`,
+    );
+    const hooks = join(root, "hooks");
+    const result = run({ SKIP_AUTH: "1", GIT_HOOKS_DIR: hooks });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain("skipped, global core.hooksPath");
+    expect(existsSync(join(hooks, "pre-commit"))).toBe(false);
   });
 
   it("runs nothing when the download stops before the final call", () => {
