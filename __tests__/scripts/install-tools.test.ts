@@ -282,6 +282,37 @@ printf "abc\\trefs/tags/v9.9.9\\n"`,
     expect(hook.stdout).toContain("git --pre-commit --staged");
   });
 
+  it("exports CLOUDFLARE_API_TOKEN from bws in new shells, once", () => {
+    stub(
+      bin,
+      "bws",
+      `case "$*" in
+  *"secret list"*) echo '[{"key":"CLOUDFLARE_API_TOKEN","value":"cf-from-bws"}]' ;;
+esac
+exit 0`,
+    );
+    const envDir = join(root, "envdir");
+    writeFileSync(join(home, ".bashrc"), "");
+    for (let i = 0; i < 2; i++) {
+      const result = run({ SKIP_AUTH: "1", ENV_DIR: envDir });
+      expect(result.status, result.stderr).toBe(0);
+    }
+    const rc = readFileSync(join(home, ".bashrc"), "utf8");
+    expect(rc.split(join(envDir, "env.sh")).length - 1).toBe(2);
+    const shell = spawnSync(
+      "bash",
+      ["-c", `. "${join(home, ".bashrc")}"; printf %s "$CLOUDFLARE_API_TOKEN"`],
+      {
+        encoding: "utf8",
+        env: { PATH: `${bin}:${SYSTEM_PATH}`, BWS_ACCESS_TOKEN: "t" },
+      },
+    );
+    expect(shell.stdout).toBe("cf-from-bws");
+    expect(readFileSync(join(envDir, "env.sh"), "utf8")).not.toContain(
+      "cf-from-bws",
+    );
+  });
+
   it("installs missing dev utils with apt-get", () => {
     const log = join(root, "apt.log");
     stub(bin, "apt-get", `echo "$*" >> "${log}"`);
