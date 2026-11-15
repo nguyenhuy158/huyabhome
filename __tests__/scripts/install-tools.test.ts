@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -45,6 +46,26 @@ case "$1" in
 esac
 exit 0`;
 
+const MISE_ARCH = process.arch === "arm64" ? "arm64" : "x64";
+const MISE_BINARY = `#!/bin/bash\necho "9.9.9 linux-${MISE_ARCH}"\n`;
+const sha256 = (text: string) =>
+  createHash("sha256").update(text).digest("hex");
+
+const miseCurlBody = (log: string, sum: string) => `
+echo "$*" >> "${log}"
+out=""
+url=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "-o" ] && out="$2"
+  url="$1"
+  shift
+done
+case "$url" in
+  *SHASUMS256.txt) printf '%s  ./mise-v9.9.9-linux-${MISE_ARCH}\\n' '${sum}' > "$out" ;;
+  *) printf '#!/bin/bash\\necho "9.9.9 linux-${MISE_ARCH}"\\n' > "$out" ;;
+esac
+exit 0`;
+
 const URL_LAST = /\shttps:\/\/\S+$/;
 
 const versionStub = (name: string, extra = "") => `
@@ -84,6 +105,7 @@ describe("scripts/install-tools.sh", () => {
     }
     stub(bin, "gh", 'echo "gh version 9.9.9"');
     stub(bin, "biome", 'echo "Version: 9.9.9"');
+    stub(bin, "mise", `echo "9.9.9 linux-${MISE_ARCH}"`);
     stub(bin, "npm", npmBody(join(root, "npm.log")));
     stub(bin, "node", 'echo "22.18.0"');
     stub(bin, "git", 'printf "abc\\trefs/tags/v9.9.9\\n"');
@@ -109,6 +131,31 @@ exit 0`,
     const source = readFileSync(SCRIPT, "utf8");
     expect(source).toContain("--proto '=https' --tlsv1.2 --retry 3");
     expect(source).not.toMatch(/^\s+curl /m);
+  });
+
+  it("upgrades mise after verifying its checksum", () => {
+    const log = join(root, "curl.log");
+    stub(bin, "mise", `echo "1.0.0 linux-${MISE_ARCH}"`);
+    stub(bin, "curl", miseCurlBody(log, sha256(MISE_BINARY)));
+    const result = run({ SKIP_AUTH: "1" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      `mise installed: 9.9.9 linux-${MISE_ARCH} (was: 1.0.0)`,
+    );
+    const calls = readFileSync(log, "utf8").trim().split("\n");
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call).toMatch(URL_LAST);
+      expect(call).toContain("github.com/jdx/mise/releases/download/v9.9.9/");
+    }
+  });
+
+  it("refuses a mise download with a wrong checksum", () => {
+    stub(bin, "mise", `echo "1.0.0 linux-${MISE_ARCH}"`);
+    stub(bin, "curl", miseCurlBody(join(root, "curl.log"), sha256("other")));
+    const result = run({ SKIP_AUTH: "1" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("mise: checksum mismatch");
   });
 
   it("upgrades biome when a newer version exists", () => {
@@ -167,6 +214,7 @@ exit 0`,
       "cf",
       "wrangler",
       "biome",
+      "mise",
       "cloudflared",
       "browse",
     ]) {

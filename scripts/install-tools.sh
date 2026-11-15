@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Installs bws (Bitwarden Secrets Manager CLI), gh (GitHub CLI, latest release),
-# cf (Cloudflare CLI, beta), wrangler, biome (latest, npm), cloudflared, browse (Browserbase CLI)
-# and Tailscale.
+# mise (latest release), cf (Cloudflare CLI, beta), wrangler, biome (latest, npm), cloudflared,
+# browse (Browserbase CLI) and Tailscale.
 # Linux x86_64 / arm64 and macOS. Idempotent: skips tools already installed.
-# gh and biome are the exception: they are upgraded when a newer release exists.
+# gh, mise and biome are the exception: they are upgraded when a newer release exists.
 #
 # Auth model:
 #   bws        reads its token from the BWS_ACCESS_TOKEN env var.
@@ -22,8 +22,8 @@ NODE_MIN_MAJOR=22
 NODE_MIN_MINOR=18
 
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64"; GH_ARCH="amd64" ;;
-  Linux-aarch64) BWS_TARGET="aarch64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-arm64"; GH_ARCH="arm64" ;;
+  Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64"; GH_ARCH="amd64"; MISE_ARCH="x64" ;;
+  Linux-aarch64) BWS_TARGET="aarch64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-arm64"; GH_ARCH="arm64"; MISE_ARCH="arm64" ;;
   Darwin-arm64)  BWS_TARGET="aarch64-apple-darwin" ;;
   Darwin-x86_64) BWS_TARGET="x86_64-apple-darwin" ;;
   *) echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
@@ -106,6 +106,36 @@ install_gh() {
   tar -xzf "$workdir/$asset" -C "$workdir"
   $SUDO install -m 755 "$workdir/gh_${version}_linux_${GH_ARCH}/bin/gh" "$INSTALL_DIR/gh"
   echo "gh installed: $(gh --version | head -1) (was: ${installed:-none})"
+}
+
+install_mise() {
+  case "$(uname -s)" in
+    Darwin)
+      command -v brew >/dev/null 2>&1 || { echo "Homebrew not found; install it first (https://brew.sh)" >&2; exit 1; }
+      if command -v mise >/dev/null 2>&1; then brew upgrade mise || true; else brew install mise; fi
+      echo "mise installed: $(mise --version | head -1)"
+      return
+      ;;
+  esac
+  local tag version installed workdir asset
+  tag="$(git ls-remote --tags --refs https://github.com/jdx/mise 'v*' \
+    | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+  [ -n "$tag" ] || { echo "mise: could not find the latest release tag" >&2; exit 1; }
+  version="${tag#v}"
+  installed="$(command -v mise >/dev/null 2>&1 && mise --version | awk '{print $1}' || true)"
+  if [ "$installed" = "$version" ]; then
+    echo "mise already at latest: $version"
+    return
+  fi
+  asset="mise-${tag}-linux-${MISE_ARCH}"
+  workdir="$(mktemp -d)"
+  TMP_PATHS+=("$workdir")
+  "${CURL[@]}" -o "$workdir/$asset" "https://github.com/jdx/mise/releases/download/${tag}/${asset}"
+  "${CURL[@]}" -o "$workdir/SHASUMS256.txt" "https://github.com/jdx/mise/releases/download/${tag}/SHASUMS256.txt"
+  [ "$(sha256_of "$workdir/$asset")" = "$(awk -v f="./$asset" '$2 == f {print $1}' "$workdir/SHASUMS256.txt")" ] \
+    || { echo "mise: checksum mismatch for $asset" >&2; exit 1; }
+  $SUDO install -m 755 "$workdir/$asset" "$INSTALL_DIR/mise"
+  echo "mise installed: $(mise --version | head -1) (was: ${installed:-none})"
 }
 
 install_cf() {
@@ -366,6 +396,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | cf (Cloudflare CLI, beta) | $(tool_version cf) | uses \`CLOUDFLARE_API_TOKEN\` from bws |
 | wrangler | $(tool_version wrangler) | uses \`CLOUDFLARE_API_TOKEN\` from bws |
 | biome | $(tool_version biome) | latest release; upgraded on every run |
+| mise | $(tool_version mise) | latest release, checksum verified; upgraded on every run |
 | cloudflared | $(tool_version cloudflared) | tunnels; login or token needed to run one |
 | browse (Browserbase CLI) | $(tool_version browse) | uses \`BB_API_KEY\` from bws |
 | tailscale | $(tool_version tailscale) | $(tailscale_state) |
@@ -411,6 +442,7 @@ main() {
   local failed=0
   install_bws
   install_gh
+  install_mise
   install_cf
   install_wrangler
   install_biome
