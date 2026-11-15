@@ -25,6 +25,11 @@ const STUB_NAMES = [
   "cloudflared",
   "browse",
   "gitleaks",
+  "jq",
+  "rg",
+  "fd",
+  "shellcheck",
+  "shfmt",
 ];
 const SYSTEM_PATH = "/usr/bin:/bin";
 
@@ -266,12 +271,23 @@ printf "abc\\trefs/tags/v9.9.9\\n"`,
     const config = readFileSync(cfg, "utf8");
     expect(config).toContain("user.name=huy");
     expect(config).toContain("user.email=huy.ntq02@gmail.com");
+    expect(config).toContain("pull.rebase=true");
+    expect(config).toContain("init.defaultBranch=main");
     expect(config).toContain(`core.hooksPath=${hooks}`);
     const hook = spawnSync("bash", [join(hooks, "pre-commit")], {
       encoding: "utf8",
       env: { PATH: `${bin}:${SYSTEM_PATH}` },
     });
     expect(hook.stdout).toContain("git --pre-commit --staged");
+  });
+
+  it("installs missing dev utils with apt-get", () => {
+    const log = join(root, "apt.log");
+    stub(bin, "apt-get", `echo "$*" >> "${log}"`);
+    const result = run({ SKIP_AUTH: "1", DEV_UTILS: "nopeutil:nopepkg" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(log, "utf8")).toContain("install -y nopepkg");
+    expect(result.stdout).toContain("dev utils ready");
   });
 
   it("keeps an existing global core.hooksPath", () => {

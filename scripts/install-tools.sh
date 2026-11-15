@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Installs bws (Bitwarden Secrets Manager CLI), gh (GitHub CLI, latest release),
 # mise (latest release), cf (Cloudflare CLI, beta), wrangler, biome (latest, npm), cloudflared,
-# browse (Browserbase CLI), gitleaks and Tailscale. Also sets the global git identity
-# and a global pre-commit hook that scans staged changes with gitleaks.
+# browse (Browserbase CLI), gitleaks, dev utils (jq, rg, fd, shellcheck, shfmt) and Tailscale.
+# Also sets the global git identity, pull.rebase and a global pre-commit hook that scans
+# staged changes with gitleaks.
 # Linux x86_64 / arm64 and macOS. Idempotent: skips tools already installed.
 # gh, mise and biome are the exception: they are upgraded when a newer release exists.
 #
@@ -24,6 +25,7 @@ NODE_MIN_MINOR=18
 GIT_USER_NAME="huy"
 GIT_USER_EMAIL="huy.ntq02@gmail.com"
 GIT_HOOKS_DIR="${GIT_HOOKS_DIR:-$HOME/.config/git/hooks}"
+DEV_UTILS="${DEV_UTILS:-jq:jq rg:ripgrep fd:fd-find shellcheck:shellcheck shfmt:shfmt}"
 
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64"; GH_ARCH="amd64"; MISE_ARCH="x64"; GITLEAKS_ARCH="x64" ;;
@@ -172,10 +174,38 @@ install_gitleaks() {
   echo "gitleaks installed: $(gitleaks version | head -1)"
 }
 
+install_dev_utils() {
+  local entry missing=()
+  for entry in $DEV_UTILS; do
+    command -v "${entry%%:*}" >/dev/null 2>&1 || missing+=("${entry##*:}")
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    case "$(uname -s)" in
+      Darwin)
+        command -v brew >/dev/null 2>&1 || { echo "Homebrew not found; install it first (https://brew.sh)" >&2; exit 1; }
+        brew install "${missing[@]/fd-find/fd}"
+        ;;
+      Linux)
+        command -v apt-get >/dev/null 2>&1 || { echo "dev utils: apt-get not found; install ${missing[*]} yourself" >&2; exit 1; }
+        local apt_sudo=""
+        [ "$(id -u)" -eq 0 ] || apt_sudo="sudo"
+        $apt_sudo apt-get update -qq
+        $apt_sudo apt-get install -y "${missing[@]}"
+        ;;
+    esac
+  fi
+  if ! command -v fd >/dev/null 2>&1 && command -v fdfind >/dev/null 2>&1; then
+    $SUDO ln -s "$(command -v fdfind)" "$INSTALL_DIR/fd"
+  fi
+  echo "dev utils ready"
+}
+
 setup_git_identity() {
   command -v git >/dev/null 2>&1 || { echo "git not found; skipped git identity" >&2; return 1; }
   git config --global user.name "$GIT_USER_NAME"
   git config --global user.email "$GIT_USER_EMAIL"
+  git config --global pull.rebase true
+  git config --global init.defaultBranch main
   echo "git: global identity set to $GIT_USER_NAME <$GIT_USER_EMAIL>"
 }
 
@@ -460,6 +490,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | cloudflared | $(tool_version cloudflared) | tunnels; login or token needed to run one |
 | browse (Browserbase CLI) | $(tool_version browse) | uses \`BB_API_KEY\` from bws |
 | gitleaks | $(tool_version gitleaks) | secret scanner; pre-commit hook in \`$GIT_HOOKS_DIR\` |
+| jq, rg, fd, shellcheck, shfmt | $(tool_version jq) / $(tool_version rg) | dev utils; installed only when missing |
 | tailscale | $(tool_version tailscale) | $(tailscale_state) |
 
 ## Where the tokens come from
@@ -510,6 +541,7 @@ main() {
   install_cloudflared
   install_browserbase
   install_gitleaks
+  install_dev_utils
   install_tailscale
   setup_git_identity || failed=1
   setup_gitleaks_hook || failed=1
