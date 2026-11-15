@@ -30,6 +30,7 @@ const STUB_NAMES = [
   "fd",
   "shellcheck",
   "shfmt",
+  "sqlite3",
 ];
 const SYSTEM_PATH = "/usr/bin:/bin";
 

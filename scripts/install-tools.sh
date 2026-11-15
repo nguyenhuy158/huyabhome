@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs bws (Bitwarden Secrets Manager CLI), gh (GitHub CLI, latest release),
 # mise (latest release), cf (Cloudflare CLI, beta), wrangler, biome (latest, npm), cloudflared,
-# browse (Browserbase CLI), gitleaks, dev utils (jq, rg, fd, shellcheck, shfmt) and Tailscale.
+# browse (Browserbase CLI), gitleaks, dev utils (jq, rg, fd, shellcheck, shfmt, sqlite3) and Tailscale.
 # Also sets the global git identity, pull.rebase and a global pre-commit hook that scans
 # staged changes with gitleaks.
 # Linux x86_64 / arm64 and macOS. Idempotent: skips tools already installed.
@@ -25,7 +25,7 @@ NODE_MIN_MINOR=18
 GIT_USER_NAME="huy"
 GIT_USER_EMAIL="huy.ntq02@gmail.com"
 GIT_HOOKS_DIR="${GIT_HOOKS_DIR:-$HOME/.config/git/hooks}"
-DEV_UTILS="${DEV_UTILS:-jq:jq rg:ripgrep fd:fd-find shellcheck:shellcheck shfmt:shfmt}"
+DEV_UTILS="${DEV_UTILS:-jq:jq rg:ripgrep fd:fd-find shellcheck:shellcheck shfmt:shfmt sqlite3:sqlite3}"
 
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64)  BWS_TARGET="x86_64-unknown-linux-gnu"; CLOUDFLARED_ASSET="cloudflared-linux-amd64"; GH_ARCH="amd64"; MISE_ARCH="x64"; GITLEAKS_ARCH="x64" ;;
