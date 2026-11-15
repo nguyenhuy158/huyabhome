@@ -31,6 +31,8 @@ esac
 SUDO=""
 [ -w "$INSTALL_DIR" ] || SUDO="sudo"
 
+CURL=(curl -fsSL --proto '=https' --tlsv1.2 --retry 3)
+
 bws_secret() {
   bws secret list | python3 -I -c '
 import json, sys
@@ -52,11 +54,11 @@ install_bws() {
     return
   fi
   local version workdir
-  version="$(curl -fsSL -H 'User-Agent: install-tools' https://crates.io/api/v1/crates/bws \
+  version="$("${CURL[@]}" -H 'User-Agent: install-tools' https://crates.io/api/v1/crates/bws \
     | python3 -c 'import sys,json;print(json.load(sys.stdin)["crate"]["max_stable_version"])')"
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' RETURN
-  curl -fsSL -o "$workdir/bws.zip" \
+  "${CURL[@]}" -o "$workdir/bws.zip" \
     "https://github.com/bitwarden/sdk-sm/releases/download/bws-v${version}/bws-${BWS_TARGET}-${version}.zip"
   python3 -I -c 'import sys,zipfile;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
     "$workdir/bws.zip" "$workdir"
@@ -90,8 +92,8 @@ install_gh() {
   asset="gh_${version}_linux_${GH_ARCH}.tar.gz"
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' RETURN
-  curl -fsSL -o "$workdir/$asset" "https://github.com/cli/cli/releases/download/${tag}/${asset}"
-  curl -fsSL -o "$workdir/checksums.txt" "https://github.com/cli/cli/releases/download/${tag}/gh_${version}_checksums.txt"
+  "${CURL[@]}" -o "$workdir/$asset" "https://github.com/cli/cli/releases/download/${tag}/${asset}"
+  "${CURL[@]}" -o "$workdir/checksums.txt""https://github.com/cli/cli/releases/download/${tag}/gh_${version}_checksums.txt"
   [ "$(sha256_of "$workdir/$asset")" = "$(awk -v f="$asset" '$2 == f {print $1}' "$workdir/checksums.txt")" ] \
     || { echo "gh: checksum mismatch for $asset" >&2; exit 1; }
   tar -xzf "$workdir/$asset" -C "$workdir"
@@ -147,7 +149,7 @@ install_cloudflared() {
       local workdir
       workdir="$(mktemp -d)"
       trap 'rm -rf "$workdir"' RETURN
-      curl -fsSL -o "$workdir/cloudflared" \
+      "${CURL[@]}" -o "$workdir/cloudflared" \
         "https://github.com/cloudflare/cloudflared/releases/latest/download/${CLOUDFLARED_ASSET}"
       $SUDO install -m 755 "$workdir/cloudflared" "$INSTALL_DIR/cloudflared"
       ;;
@@ -166,7 +168,7 @@ install_tailscale() {
   fi
   case "$(uname -s)" in
     Linux)
-      curl -fsSL https://tailscale.com/install.sh | sh
+      "${CURL[@]}" https://tailscale.com/install.sh | sh
       ;;
     Darwin)
       command -v brew >/dev/null 2>&1 || { echo "Homebrew not found; install it first (https://brew.sh)" >&2; exit 1; }
@@ -194,7 +196,7 @@ verify_browserbase_key() {
   can_authenticate || { echo "browse: skipped key check (no BWS_ACCESS_TOKEN or SKIP_AUTH=1)"; return; }
   local key
   key="$(bws_secret BB_API_KEY)"
-  if curl -fsS -o /dev/null -H "X-BB-API-Key: $key" https://api.browserbase.com/v1/projects; then
+  if "${CURL[@]}" -o /dev/null -H "X-BB-API-Key: $key"https://api.browserbase.com/v1/projects; then
     echo "browse: BB_API_KEY from bws works"
     echo "Use it in your shell with:"
     echo "  export BB_API_KEY=\"\$(bws secret list | python3 -I -c 'import json,sys;print({i[\"key\"]:i[\"value\"] for i in json.load(sys.stdin)}[\"BB_API_KEY\"])')\""
@@ -383,15 +385,21 @@ README
   echo "readme: wrote $target"
 }
 
-install_bws
-install_gh
-install_cf
-install_wrangler
-install_cloudflared
-install_browserbase
-install_tailscale
-verify_cf_token
-verify_browserbase_key
-login_tailscale
-setup_tailnet_ssh
-write_readme
+main() {
+  local failed=0
+  install_bws
+  install_gh
+  install_cf
+  install_wrangler
+  install_cloudflared
+  install_browserbase
+  install_tailscale
+  verify_cf_token || failed=1
+  verify_browserbase_key || failed=1
+  login_tailscale
+  setup_tailnet_ssh
+  write_readme
+  return "$failed"
+}
+
+main "$@"
