@@ -284,6 +284,7 @@ printf "abc\\trefs/tags/v9.9.9\\n"`,
   it("installs missing dev utils with apt-get", () => {
     const log = join(root, "apt.log");
     stub(bin, "apt-get", `echo "$*" >> "${log}"`);
+    stub(bin, "id", "echo 0");
     const result = run({ SKIP_AUTH: "1", DEV_UTILS: "nopeutil:nopepkg" });
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(log, "utf8")).toContain("install -y nopepkg");
