@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getRandomQuote, type Quote } from "~/utils/quotes";
+import { Button } from "~/ui/Button";
 
 export default function RandomQuote() {
   const { t, i18n } = useTranslation();
@@ -38,12 +39,9 @@ export default function RandomQuote() {
 
         {/* Button */}
         <div className="flex justify-center">
-          <button
-            onClick={handleGetNewQuote}
-            className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200"
-          >
+          <Button size="lg" onClick={handleGetNewQuote}>
             {t("quotes.button_next")}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

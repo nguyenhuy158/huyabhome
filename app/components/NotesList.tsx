@@ -2,6 +2,7 @@ import React from "react";
 import { Search, Plus } from "lucide-react";
 import type { NoteListItem } from "../utils/notes";
 import { NoteCard } from "./NoteCard";
+import { Button } from "../ui/Button";
 
 interface NotesListProps {
   notes: NoteListItem[];
@@ -36,14 +37,9 @@ export const NotesList: React.FC<NotesListProps> = ({
     <div className="flex flex-col h-full bg-white/10 dark:bg-white/5 backdrop-blur-lg border-r border-white/20 dark:border-white/10">
       {/* Header with create button */}
       <div className="p-4 border-b border-white/20 dark:border-white/10 space-y-3">
-        <button
-          onClick={onCreateNote}
-          disabled={isLoading}
-          className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white font-medium py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
-        >
-          <Plus size={18} />
+        <Button block onClick={onCreateNote} disabled={isLoading} leftIcon={<Plus size={18} />}>
           New Note
-        </button>
+        </Button>
 
         {/* Search */}
         <div className="relative">

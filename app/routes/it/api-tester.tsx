@@ -4,6 +4,7 @@ import { Play, Check, AlertCircle, Copy, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { HistorySection } from "../../components/HistorySection";
+import { Button } from "../../ui/Button";
 import { useLocalStorageHistory } from "../../utils/history";
 
 export function meta() {
@@ -168,14 +169,13 @@ export default function ApiTester() {
                   className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none"
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 />
-                <button
+                <Button
                   onClick={handleSend}
                   disabled={isLoading}
-                  className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  leftIcon={isLoading ? <RotateCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                 >
-                  {isLoading ? <RotateCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                   {t("api_tester.actions.send")}
-                </button>
+                </Button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
