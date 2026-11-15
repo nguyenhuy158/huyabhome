@@ -1,5 +1,6 @@
 import { createRequestHandler } from "react-router";
 import { handleCliRequest } from "./cli";
+import { handleDeployCheck } from "./deploy-check";
 import { gamesRedirect } from "./games-redirect";
 
 // Export Durable Object classes
@@ -16,11 +17,14 @@ declare module "react-router" {
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
-  import.meta.env.MODE
+  import.meta.env.MODE,
 );
 
 export default {
   async fetch(request, env, ctx) {
+    const deployCheck = await handleDeployCheck(request, env);
+    if (deployCheck) return deployCheck;
+
     const redirect = gamesRedirect(request);
     if (redirect) return redirect;
 
