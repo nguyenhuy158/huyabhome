@@ -53,10 +53,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const listValue = await kv.get(listKeyFor(ownerId), "json");
     const noteIds: string[] = (listValue as string[]) || [];
 
-    // Fetch all notes and filter
+    // Fetch all notes together (KV round trips overlap) and filter
+    const stored = await Promise.all(
+      noteIds.map((id) => kv.get(`notes:${id}`, "json")),
+    );
     const notes: Note[] = [];
-    for (const id of noteIds) {
-      const note = await kv.get(`notes:${id}`, "json");
+    for (const note of stored) {
       if (note) {
         const noteData = note as Note;
         // Belt and braces: the list is already per-owner, but a note that
