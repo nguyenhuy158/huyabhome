@@ -1,13 +1,16 @@
 import { Link, useLocation } from "react-router";
 import { Menu, X, Home, Info, Sun, Moon, FileJson, Calendar, FileDiff, Timer, Code, Coffee, Gamepad2, Hash, Lightbulb, Rocket, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { TetCountdown } from "./TetCountdown";
 import { OnlineUsers } from "./OnlineUsers";
 import { useTheme } from "../utils/theme";
 import { GAMES_URL } from "../utils/games";
 
 import { toast } from "sonner";
+
+const TetCountdown = lazy(() =>
+  import("./TetCountdown").then((m) => ({ default: m.TetCountdown })),
+);
 
 /** Exact match for "/", prefix match for everything else — "/" must not light up on every route. */
 function isActivePath(pathname: string, href: string): boolean {
@@ -183,7 +186,9 @@ export function Navbar() {
     return (
       <div className="border-t border-gray-200 dark:border-white/10 p-3 space-y-3">
         <div className="hidden xl:block">
-          <TetCountdown variant="compact" />
+          <Suspense fallback={null}>
+            <TetCountdown variant="compact" />
+          </Suspense>
         </div>
         <OnlineUsers />
         <div className="flex items-center gap-2">
