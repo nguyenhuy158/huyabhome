@@ -23,6 +23,10 @@
 # In containers without TUN/systemd tailscaled runs in userspace mode and ~/.ssh/config
 # routes tailnet hosts through `tailscale nc`.
 # Set SKIP_AUTH=1 to install only.
+# Run it with the argument doctor for a read-only health check: install-tools.sh doctor
+#   (checks the tools and the steps that are not in INSTALL_SKIP; exit 1 on a failed check).
+#   It installs and changes nothing; it runs each tool's version in a throwaway HOME so
+#   the tools' own caches and logs in your HOME are not touched either.
 # Set INSTALL_SKIP to a space-separated list of steps to skip (default: none):
 #   verify git-identity git-hook ssh shell-env pipiops tailscale readme
 # The pip package huyab-install-tools skips all of them unless asked.
@@ -597,6 +601,219 @@ verify_browserbase_key() {
   fi
 }
 
+DOCTOR_OK=0
+DOCTOR_WARN=0
+DOCTOR_FAIL=0
+
+doctor_report() {
+  printf '%-5s %-22s %s\n' "$1" "$2" "$3"
+}
+
+doctor_ok() {
+  DOCTOR_OK=$((DOCTOR_OK + 1))
+  doctor_report ok "$1" "${2:-}"
+}
+
+doctor_warn() {
+  DOCTOR_WARN=$((DOCTOR_WARN + 1))
+  doctor_report warn "$1" "${2:-}"
+}
+
+doctor_fail() {
+  DOCTOR_FAIL=$((DOCTOR_FAIL + 1))
+  doctor_report FAIL "$1" "${2:-}"
+}
+
+doctor_step() {
+  if step_skipped "$1"; then
+    doctor_report skip "$1" "(INSTALL_SKIP)"
+    return 0
+  fi
+  "$2"
+}
+
+doctor_summary() {
+  echo
+  echo "doctor: $DOCTOR_OK ok, $DOCTOR_WARN warnings, $DOCTOR_FAIL failed"
+  [ "$DOCTOR_FAIL" -eq 0 ]
+}
+
+DOCTOR_PREREQS="git curl python3 node npm"
+DOCTOR_TOOLS="bws gh mise cf wrangler biome cloudflared browse gitleaks jq rg fd shellcheck shfmt sqlite3"
+
+doctor_isolated() {
+  HOME="$DOCTOR_HOME" XDG_CACHE_HOME="$DOCTOR_HOME/cache" XDG_CONFIG_HOME="$DOCTOR_HOME/config" \
+    XDG_STATE_HOME="$DOCTOR_HOME/state" XDG_DATA_HOME="$DOCTOR_HOME/data" "$@"
+}
+
+doctor_version() {
+  doctor_isolated tool_version "$1"
+}
+
+doctor_command() {
+  local name="$1" version
+  if ! command -v "$name" >/dev/null 2>&1; then
+    doctor_fail "$name" "not installed"
+    return 0
+  fi
+  version="$(doctor_version "$name" || true)"
+  doctor_ok "$name" "${version:-found}"
+}
+
+doctor_node_version() {
+  command -v node >/dev/null 2>&1 || return 0
+  local major
+  major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || true)"
+  if [ "${major:-0}" -ge "$NODE_MIN_MAJOR" ] 2>/dev/null; then
+    doctor_ok "node >= $NODE_MIN_MAJOR" "$(node --version)"
+  else
+    doctor_warn "node >= $NODE_MIN_MAJOR" "found $(node --version); cf, wrangler and pipiops need it"
+  fi
+}
+
+doctor_path() {
+  case ":$PATH:" in
+    *":$INSTALL_DIR:"*) doctor_ok "PATH" "$INSTALL_DIR is on PATH" ;;
+    *) doctor_warn "PATH" "$INSTALL_DIR is not on PATH" ;;
+  esac
+}
+
+doctor_tools() {
+  local name
+  for name in $DOCTOR_PREREQS $DOCTOR_TOOLS; do
+    doctor_command "$name"
+  done
+  doctor_node_version
+  doctor_path
+}
+
+doctor_git_identity() {
+  local name email
+  name="$(git config --global --get user.name 2>/dev/null || true)"
+  email="$(git config --global --get user.email 2>/dev/null || true)"
+  if [ -n "$name" ] && [ -n "$email" ]; then
+    doctor_ok "git identity" "$name <$email>"
+  else
+    doctor_fail "git identity" "global user.name or user.email is not set"
+  fi
+}
+
+doctor_git_hook() {
+  local hooks_path hook
+  hooks_path="$(git config --global --get core.hooksPath 2>/dev/null || true)"
+  hook="$hooks_path/pre-commit"
+  if [ -z "$hooks_path" ]; then
+    doctor_fail "git hook" "core.hooksPath is not set"
+  elif [ -x "$hook" ] && grep -q gitleaks "$hook"; then
+    doctor_ok "git hook" "gitleaks pre-commit in $hooks_path"
+  else
+    doctor_warn "git hook" "$hooks_path has no gitleaks pre-commit"
+  fi
+}
+
+doctor_shell_env() {
+  local env_file="${ENV_DIR:-$HOME/.config/install-tools}/env.sh"
+  if [ ! -f "$env_file" ]; then
+    doctor_fail "shell env" "$env_file is missing"
+  elif grep -qsF "$env_file" "$HOME/.bashrc" "$HOME/.zshrc"; then
+    doctor_ok "shell env" "sourced from your rc file"
+  else
+    doctor_warn "shell env" "$env_file exists but no rc file sources it"
+  fi
+}
+
+doctor_ssh() {
+  local config="$HOME/.ssh/config"
+  if ! use_userspace_tailscale; then
+    doctor_ok "tailnet ssh" "not needed (system tailscale)"
+  elif grep -qsF "# BEGIN install-tools tailnet" "$config"; then
+    doctor_ok "tailnet ssh" "block present in $config"
+  else
+    doctor_warn "tailnet ssh" "no install-tools block in $config"
+  fi
+}
+
+DOCTOR_SECRETS="CLOUDFLARE_API_TOKEN BB_API_KEY"
+
+doctor_tailscale() {
+  local state
+  state="$(tailscale_state)"
+  if [ "$state" = "connected" ]; then
+    doctor_ok "tailscale" "connected"
+  else
+    doctor_fail "tailscale" "$state"
+  fi
+}
+
+doctor_secret() {
+  if doctor_isolated bws_secret "$1" >/dev/null 2>&1; then
+    doctor_ok "bws $1" "found"
+  else
+    doctor_warn "bws $1" "not found"
+  fi
+}
+
+doctor_verify() {
+  local name
+  if ! can_authenticate; then
+    doctor_warn "bws login" "skipped (no BWS_ACCESS_TOKEN, no bws, or SKIP_AUTH=1)"
+    return 0
+  fi
+  if ! doctor_isolated bws secret list >/dev/null 2>&1; then
+    doctor_fail "bws login" "bws secret list failed"
+    return 0
+  fi
+  doctor_ok "bws login" "bws secret list works"
+  for name in $DOCTOR_SECRETS; do
+    doctor_secret "$name"
+  done
+}
+
+doctor_link() {
+  local name="$1"
+  if [ -x "$INSTALL_DIR/$name" ]; then
+    doctor_ok "$name" "$(readlink "$INSTALL_DIR/$name" 2>/dev/null || echo "$INSTALL_DIR/$name")"
+  else
+    doctor_fail "$name" "no executable $INSTALL_DIR/$name"
+  fi
+}
+
+doctor_pipiops_token() {
+  local token_source
+  token_source="$(doctor_isolated pipiops_token_source)"
+  if [ "$token_source" = "none" ]; then
+    doctor_warn "pipiops token" "none: set $PIPIOPS_TOKEN_NAME, a token file or a bws secret"
+  else
+    doctor_ok "pipiops token" "found ($token_source)"
+  fi
+}
+
+doctor_pipiops() {
+  if [ -d "$PIPIOPS_DIR/.git" ]; then
+    doctor_ok "pipiops" "$(pipiops_version) in $PIPIOPS_DIR"
+  else
+    doctor_fail "pipiops" "not cloned in $PIPIOPS_DIR"
+  fi
+  doctor_link pipimcp
+  doctor_link pipicli
+  doctor_pipiops_token
+}
+
+doctor() {
+  echo "install-tools doctor (read-only)"
+  DOCTOR_HOME="$(mktemp -d)"
+  TMP_PATHS+=("$DOCTOR_HOME")
+  doctor_tools
+  doctor_step verify doctor_verify
+  doctor_step git-identity doctor_git_identity
+  doctor_step git-hook doctor_git_hook
+  doctor_step tailscale doctor_tailscale
+  doctor_step ssh doctor_ssh
+  doctor_step shell-env doctor_shell_env
+  doctor_step pipiops doctor_pipiops
+  doctor_summary
+}
+
 setup_shell_env() {
   local env_dir="${ENV_DIR:-$HOME/.config/install-tools}"
   local env_file="$env_dir/env.sh"
@@ -724,6 +941,8 @@ sudo tailscale up --auth-key=file:/path/to/keyfile
 curl -fsSL https://raw.githubusercontent.com/nguyenhuy158/huyabhome/main/scripts/install-tools.sh | bash
 \`\`\`
 
+Check the machine later, read-only, with \`... | bash -s doctor\`. It exits 1 when a check fails.
+
 Set \`SKIP_AUTH=1\` to install only, without logging in.
 README
 }
@@ -737,7 +956,7 @@ write_readme() {
   echo "readme: wrote $target"
 }
 
-main() {
+install_all() {
   local failed=0
   install_bws
   install_gh
@@ -759,6 +978,14 @@ main() {
   run_step shell-env setup_shell_env
   run_step readme write_readme
   return "$failed"
+}
+
+main() {
+  case "${1:-}" in
+    "") install_all ;;
+    doctor) doctor ;;
+    *) echo "usage: install-tools.sh [doctor]" >&2; return 2 ;;
+  esac
 }
 
 main "$@"

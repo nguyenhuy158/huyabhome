@@ -22,6 +22,10 @@
 # In containers without TUN/systemd tailscaled runs in userspace mode and ~/.ssh/config
 # routes tailnet hosts through `tailscale nc`.
 # Set SKIP_AUTH=1 to install only.
+# Run it with the argument doctor for a read-only health check: install-tools.sh doctor
+#   (checks the tools and the steps that are not in INSTALL_SKIP; exit 1 on a failed check).
+#   It installs and changes nothing; it runs each tool's version in a throwaway HOME so
+#   the tools' own caches and logs in your HOME are not touched either.
 # Set INSTALL_SKIP to a space-separated list of steps to skip (default: none):
 #   verify git-identity git-hook ssh shell-env pipiops tailscale readme
 # The pip package huyab-install-tools skips all of them unless asked.

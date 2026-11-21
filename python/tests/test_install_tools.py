@@ -159,5 +159,54 @@ class Cli(unittest.TestCase):
         self.assertEqual(stop.exception.code, 0)
 
 
+class Doctor(unittest.TestCase):
+    def test_the_library_runs_the_doctor_with_the_safe_skip_list(self):
+        with mock.patch("subprocess.run", return_value=completed(0)) as run:
+            self.assertEqual(install_tools.doctor(), 0)
+        self.assertEqual(
+            run.call_args.args[0],
+            ["bash", str(install_tools.script_path()), "doctor"],
+        )
+        self.assertEqual(run.call_args.kwargs["env"]["INSTALL_SKIP"], ALL_STEPS)
+
+    def test_the_doctor_returns_the_exit_code_of_the_script(self):
+        with mock.patch("subprocess.run", return_value=completed(1)):
+            self.assertEqual(install_tools.doctor(), 1)
+
+    def test_checking_the_git_identity_does_not_need_a_name_and_an_email(self):
+        with mock.patch.dict(os.environ, CLEAN_ENV, clear=True):
+            with mock.patch("subprocess.run", return_value=completed(0)) as run:
+                install_tools.doctor(enable=["git-identity"])
+        self.assertNotIn("git-identity", run.call_args.kwargs["env"]["INSTALL_SKIP"].split())
+
+    def test_installing_the_git_identity_still_needs_them(self):
+        with mock.patch.dict(os.environ, CLEAN_ENV, clear=True):
+            with self.assertRaises(ValueError):
+                install_tools.run(enable=["git-identity"])
+
+    def test_the_doctor_flag_runs_the_doctor_and_nothing_else(self):
+        with mock.patch.object(cli, "run", return_value=1) as run:
+            self.assertEqual(cli.main(["--doctor"]), 1)
+        run.assert_called_once_with(args=["doctor"], env={}, enable=[])
+
+    def test_the_doctor_flag_checks_the_steps_asked_with(self):
+        with mock.patch.object(cli, "run", return_value=0) as run:
+            cli.main(["--doctor", "--with", "pipiops", "--skip-auth"])
+        run.assert_called_once_with(
+            args=["doctor"], env={"SKIP_AUTH": "1"}, enable=["pipiops"]
+        )
+
+    def test_the_doctor_flag_accepts_the_git_identity_step_without_a_name(self):
+        with mock.patch.dict(os.environ, CLEAN_ENV, clear=True):
+            with mock.patch.object(cli, "run", return_value=0) as run:
+                cli.main(["--doctor", "--with", "git-identity"])
+        run.assert_called_once_with(args=["doctor"], env={}, enable=["git-identity"])
+
+    def test_the_script_has_a_doctor_command(self):
+        script = install_tools.script_path().read_text()
+        self.assertIn("doctor) doctor ;;", script)
+        self.assertIn("doctor_summary", script)
+
+
 if __name__ == "__main__":
     unittest.main()

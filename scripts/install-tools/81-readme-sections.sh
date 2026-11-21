@@ -70,6 +70,8 @@ sudo tailscale up --auth-key=file:/path/to/keyfile
 curl -fsSL https://raw.githubusercontent.com/nguyenhuy158/huyabhome/main/scripts/install-tools.sh | bash
 \`\`\`
 
+Check the machine later, read-only, with \`... | bash -s doctor\`. It exits 1 when a check fails.
+
 Set \`SKIP_AUTH=1\` to install only, without logging in.
 README
 }

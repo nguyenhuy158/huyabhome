@@ -6,6 +6,7 @@ from pathlib import Path
 
 SCRIPT_NAME = "install-tools.sh"
 BASH_NOT_FOUND = 127
+DOCTOR_ARGUMENT = "doctor"
 STEPS = (
     "verify",
     "git-identity",
@@ -36,10 +37,11 @@ def skipped_steps(enable=()) -> str:
     return " ".join(step for step in STEPS if step not in enable)
 
 
-def build_env(env=None, enable=()) -> dict:
+def build_env(env=None, enable=(), installing=True) -> dict:
     explicit = env or {}
     merged = {**os.environ, "INSTALL_SKIP": skipped_steps(enable), **explicit}
-    if IDENTITY_STEP in enable and not all(merged.get(v) for v in IDENTITY_VARIABLES):
+    needs_identity = installing and IDENTITY_STEP in enable
+    if needs_identity and not all(merged.get(v) for v in IDENTITY_VARIABLES):
         raise ValueError(
             f"step {IDENTITY_STEP} needs {' and '.join(IDENTITY_VARIABLES)}"
         )
@@ -47,7 +49,7 @@ def build_env(env=None, enable=()) -> dict:
 
 
 def run(args=(), env=None, enable=()) -> int:
-    merged = build_env(env, enable)
+    merged = build_env(env, enable, installing=DOCTOR_ARGUMENT not in args)
     try:
         return subprocess.run(
             ["bash", str(script_path()), *args], env=merged, check=False
@@ -55,3 +57,7 @@ def run(args=(), env=None, enable=()) -> int:
     except FileNotFoundError:
         print("install-tools: bash not found", file=sys.stderr)
         return BASH_NOT_FOUND
+
+
+def doctor(env=None, enable=()) -> int:
+    return run([DOCTOR_ARGUMENT], env=env, enable=enable)

@@ -25,6 +25,12 @@ describe("python/ pip package huyab-install-tools", () => {
     expect(project).toMatch(/requires = \["setuptools>=(7[7-9]|[89]\d)"\]/);
   });
 
+  it("installs two commands, so pipx run, pipx install and mise all find one", () => {
+    const project = readFileSync(join(ROOT, "python/pyproject.toml"), "utf8");
+    expect(project).toContain('install-tools = "install_tools.cli:main"');
+    expect(project).toContain('huyab-install-tools = "install_tools.cli:main"');
+  });
+
   it("passes its Python tests", () => {
     const result = spawnSync(
       "python3",

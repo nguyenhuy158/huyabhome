@@ -78,6 +78,11 @@ How this repo fits with the others:
   `--with`; keep new personal steps in that list (`STEPS` in
   `python/src/install_tools/__init__.py` and a `run_step` call in
   `99-main.sh`). Release notes for maintainers: `python/README.md`.
+  `install-tools.sh doctor` (parts `65`-`69`, pip: `install-tools --doctor`)
+  is read-only: it runs tools in a throwaway `HOME` and exits 1 on a FAIL.
+  A new tool or step needs a check there. The package installs with pip,
+  `pipx install` and `mise use -g pipx:huyab-install-tools`; see
+  `python/README.md`.
 - `pnpm e2e`: build, serve with `wrangler dev --local`, run the E2E smoke;
   `pnpm e2e:prod`: the read-only part against `https://huyab.cfd`.
 
