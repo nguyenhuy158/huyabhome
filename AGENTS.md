@@ -73,7 +73,10 @@ How this repo fits with the others:
   lines or a function over 30. The same command copies the script into
   `python/src/install_tools/`. Python tests: `python3 -m unittest discover -s
   python/tests` (also run by `pnpm test:run`); wheel: `python -m build python/`.
-  Version 1.0.0 is not published to PyPI.
+  The pip command skips every personal step (`INSTALL_SKIP`) unless asked with
+  `--with`; keep new personal steps in that list (`STEPS` in
+  `python/src/install_tools/__init__.py` and a `run_step` call in
+  `99-main.sh`). Release notes for maintainers: `python/README.md`.
 - `pnpm e2e`: build, serve with `wrangler dev --local`, run the E2E smoke;
   `pnpm e2e:prod`: the read-only part against `https://huyab.cfd`.
 

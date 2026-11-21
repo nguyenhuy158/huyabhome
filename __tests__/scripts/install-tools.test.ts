@@ -491,6 +491,88 @@ printf "abc\\trefs/tags/v9.9.9\\n"`,
     expect(hook.stdout).toContain("git --pre-commit --staged");
   });
 
+  it("takes the git identity from GIT_USER_NAME and GIT_USER_EMAIL", () => {
+    const cfg = join(root, "gitcfg");
+    stub(
+      bin,
+      "git",
+      `if [ "$1" = config ]; then
+  shift; [ "$1" = --global ] && shift
+  if [ "$1" = --get ]; then exit 0; fi
+  echo "$1=$2" >> "${cfg}"; exit 0
+fi
+printf "abc\\trefs/tags/v9.9.9\\n"`,
+    );
+    writeFileSync(cfg, "");
+    const result = run({
+      SKIP_AUTH: "1",
+      GIT_HOOKS_DIR: join(root, "hooks"),
+      GIT_USER_NAME: "Ann",
+      GIT_USER_EMAIL: "ann@example.com",
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const config = readFileSync(cfg, "utf8");
+    expect(config).toContain("user.name=Ann");
+    expect(config).toContain("user.email=ann@example.com");
+    expect(config).not.toContain("huy.ntq02");
+  });
+
+  it("skips the steps named in INSTALL_SKIP and touches nothing of the user's", () => {
+    const gitLog = join(root, "git.log");
+    stub(
+      bin,
+      "git",
+      `echo "$*" >> "${gitLog}"
+printf "abc\\trefs/tags/v9.9.9\\n"`,
+    );
+    stub(bin, "gh", GH_LOGGED_IN);
+    stub(bin, "node", NODE_22);
+    writeFileSync(join(home, ".bashrc"), "# mine\n");
+    const steps = [
+      "verify",
+      "git-identity",
+      "git-hook",
+      "ssh",
+      "shell-env",
+      "pipiops",
+      "tailscale",
+      "readme",
+    ];
+    const result = run({
+      SKIP_AUTH: "1",
+      INSTALL_SKIP: steps.join(" "),
+      GIT_HOOKS_DIR: join(root, "hooks"),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    for (const step of steps) {
+      expect(result.stdout).toContain(`${step}: skipped (INSTALL_SKIP)`);
+    }
+    expect(readFileSync(gitLog, "utf8")).not.toMatch(/config|clone/);
+    expect(existsSync(join(root, "hooks"))).toBe(false);
+    expect(existsSync(join(home, ".ssh"))).toBe(false);
+    expect(existsSync(join(home, ".config/install-tools"))).toBe(false);
+    expect(readFileSync(join(home, ".bashrc"), "utf8")).toBe("# mine\n");
+    expect(existsSync(join(home, "README.md"))).toBe(false);
+    expect(existsSync(join(home, ".local/share/pipiops"))).toBe(false);
+    expect(result.stdout).not.toContain("pipiops installed");
+    expect(result.stdout).not.toContain("tailscale connected");
+  });
+
+  it("runs every step when INSTALL_SKIP is empty", () => {
+    const result = run({ SKIP_AUTH: "1", INSTALL_SKIP: "" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toContain("(INSTALL_SKIP)");
+    expect(existsSync(join(home, "README.md"))).toBe(true);
+  });
+
+  it("skips only the steps named in INSTALL_SKIP", () => {
+    const result = run({ SKIP_AUTH: "1", INSTALL_SKIP: "readme" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("readme: skipped (INSTALL_SKIP)");
+    expect(result.stdout).not.toContain("git-hook: skipped");
+    expect(existsSync(join(home, "README.md"))).toBe(false);
+  });
+
   it("exports CLOUDFLARE_API_TOKEN from bws in new shells, once", () => {
     stub(
       bin,

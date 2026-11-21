@@ -10,16 +10,15 @@ main() {
   install_browserbase
   install_gitleaks
   install_dev_utils
-  install_tailscale
-  install_pipiops || failed=1
-  setup_git_identity || failed=1
-  setup_gitleaks_hook || failed=1
-  verify_cf_token || failed=1
-  verify_browserbase_key || failed=1
-  login_tailscale
-  setup_tailnet_ssh
-  setup_shell_env
-  write_readme
+  run_step tailscale install_tailscale
+  run_step pipiops install_pipiops || failed=1
+  run_step git-identity setup_git_identity || failed=1
+  run_step git-hook setup_gitleaks_hook || failed=1
+  run_step verify verify_tokens || failed=1
+  run_step tailscale login_tailscale
+  run_step ssh setup_tailnet_ssh
+  run_step shell-env setup_shell_env
+  run_step readme write_readme
   return "$failed"
 }
 

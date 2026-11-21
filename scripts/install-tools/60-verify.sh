@@ -12,6 +12,13 @@ verify_cf_token() {
   fi
 }
 
+verify_tokens() {
+  local failed=0
+  verify_cf_token || failed=1
+  verify_browserbase_key || failed=1
+  return "$failed"
+}
+
 verify_browserbase_key() {
   can_authenticate || { echo "browse: skipped key check (no BWS_ACCESS_TOKEN or SKIP_AUTH=1)"; return; }
   local key

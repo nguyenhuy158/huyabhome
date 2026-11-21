@@ -23,14 +23,17 @@
 # In containers without TUN/systemd tailscaled runs in userspace mode and ~/.ssh/config
 # routes tailnet hosts through `tailscale nc`.
 # Set SKIP_AUTH=1 to install only.
+# Set INSTALL_SKIP to a space-separated list of steps to skip (default: none):
+#   verify git-identity git-hook ssh shell-env pipiops tailscale readme
+# The pip package huyab-install-tools skips all of them unless asked.
 # Finishes by writing a README.md for this machine (README_PATH, default ~/README.md).
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 NODE_MIN_MAJOR=22
 NODE_MIN_MINOR=18
-GIT_USER_NAME="huy"
-GIT_USER_EMAIL="huy.ntq02@gmail.com"
+GIT_USER_NAME="${GIT_USER_NAME:-huy}"
+GIT_USER_EMAIL="${GIT_USER_EMAIL:-huy.ntq02@gmail.com}"
 GIT_HOOKS_DIR="${GIT_HOOKS_DIR:-$HOME/.config/git/hooks}"
 DEV_UTILS="${DEV_UTILS:-jq:jq rg:ripgrep fd:fd-find shellcheck:shellcheck shfmt:shfmt sqlite3:sqlite3}"
 
@@ -60,6 +63,21 @@ trap cleanup EXIT
 
 require_brew() {
   command -v brew >/dev/null 2>&1 || { echo "Homebrew not found; install it first (https://brew.sh)" >&2; exit 1; }
+}
+
+step_skipped() {
+  case " ${INSTALL_SKIP:-} " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+run_step() {
+  if step_skipped "$1"; then
+    echo "$1: skipped (INSTALL_SKIP)"
+    return 0
+  fi
+  "$2"
 }
 
 brew_upgrade_or_install() {
@@ -558,6 +576,13 @@ verify_cf_token() {
   fi
 }
 
+verify_tokens() {
+  local failed=0
+  verify_cf_token || failed=1
+  verify_browserbase_key || failed=1
+  return "$failed"
+}
+
 verify_browserbase_key() {
   can_authenticate || { echo "browse: skipped key check (no BWS_ACCESS_TOKEN or SKIP_AUTH=1)"; return; }
   local key
@@ -724,16 +749,15 @@ main() {
   install_browserbase
   install_gitleaks
   install_dev_utils
-  install_tailscale
-  install_pipiops || failed=1
-  setup_git_identity || failed=1
-  setup_gitleaks_hook || failed=1
-  verify_cf_token || failed=1
-  verify_browserbase_key || failed=1
-  login_tailscale
-  setup_tailnet_ssh
-  setup_shell_env
-  write_readme
+  run_step tailscale install_tailscale
+  run_step pipiops install_pipiops || failed=1
+  run_step git-identity setup_git_identity || failed=1
+  run_step git-hook setup_gitleaks_hook || failed=1
+  run_step verify verify_tokens || failed=1
+  run_step tailscale login_tailscale
+  run_step ssh setup_tailnet_ssh
+  run_step shell-env setup_shell_env
+  run_step readme write_readme
   return "$failed"
 }
 

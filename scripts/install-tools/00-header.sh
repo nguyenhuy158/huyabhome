@@ -22,5 +22,8 @@
 # In containers without TUN/systemd tailscaled runs in userspace mode and ~/.ssh/config
 # routes tailnet hosts through `tailscale nc`.
 # Set SKIP_AUTH=1 to install only.
+# Set INSTALL_SKIP to a space-separated list of steps to skip (default: none):
+#   verify git-identity git-hook ssh shell-env pipiops tailscale readme
+# The pip package huyab-install-tools skips all of them unless asked.
 # Finishes by writing a README.md for this machine (README_PATH, default ~/README.md).
 set -euo pipefail
