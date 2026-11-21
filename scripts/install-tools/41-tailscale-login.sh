@@ -29,6 +29,6 @@ login_tailscale() {
   chmod 600 "$keyfile"
   TMP_PATHS+=("$keyfile")
   write_tailscale_keyfile "$keyfile"
-  "${up_cmd[@]}" up --auth-key="file:$keyfile"
+  "${up_cmd[@]}" up --auth-key="file:$keyfile" ${TS_HOSTNAME:+--hostname="$TS_HOSTNAME"}
   echo "tailscale connected"
 }

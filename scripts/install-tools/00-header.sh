@@ -13,8 +13,10 @@
 #   cf         uses CLOUDFLARE_API_TOKEN, read from the bws secret of that name.
 #              New shells export it too: ~/.config/install-tools/env.sh (no secret stored) is
 #              sourced from ~/.bashrc / ~/.zshrc and reads bws when BWS_ACCESS_TOKEN is set.
+#              ~/.bashrc / ~/.zshrc also get `mise activate`, so mise tools (and their node) are on PATH.
 #   browse     uses BB_API_KEY, read from the bws secret of that name.
 #   tailscale  logs in with the TS_AUTH_KEY env var, else the TS_AUTH_KEY bws secret.
+#              Set TS_HOSTNAME to give the node a fixed tailnet name (default: the machine hostname).
 #   pipimcp/pipicli  use PIPIMCP_PR_WORKSPACE_TOKEN: env var, else ~/.config/pipimcp/pr-workspace.token,
 #              else the bws secret of that name. This script only reports which source is found.
 # Without BWS_ACCESS_TOKEN (or TS_AUTH_KEY for tailscale) the tools are installed but not authenticated.
