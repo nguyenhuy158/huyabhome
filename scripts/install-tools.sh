@@ -14,8 +14,11 @@
 #   cf         uses CLOUDFLARE_API_TOKEN, read from the bws secret of that name.
 #              New shells export it too: ~/.config/install-tools/env.sh (no secret stored) is
 #              sourced from ~/.bashrc / ~/.zshrc and reads bws when BWS_ACCESS_TOKEN is set.
+#              ~/.bashrc / ~/.zshrc also get `mise activate`, so mise tools (and their node) are on PATH.
 #   browse     uses BB_API_KEY, read from the bws secret of that name.
 #   tailscale  logs in with the TS_AUTH_KEY env var, else the TS_AUTH_KEY bws secret.
+#              Set TS_HOSTNAME to give the node a fixed tailnet name (default: claude-cloud in
+#              userspace/container mode, else the machine hostname).
 #   pipimcp/pipicli  use PIPIMCP_PR_WORKSPACE_TOKEN: env var, else ~/.config/pipimcp/pr-workspace.token,
 #              else the bws secret of that name. This script only reports which source is found.
 # Without BWS_ACCESS_TOKEN (or TS_AUTH_KEY for tailscale) the tools are installed but not authenticated.
@@ -358,6 +361,7 @@ install_cloudflared() {
   echo "cloudflared installed: $(cloudflared --version | head -1)"
 }
 
+TS_CONTAINER_HOSTNAME="claude-cloud"
 TS_STATE_DIR="${TS_STATE_DIR:-$HOME/.local/share/tailscale}"
 TS_SOCKET="$TS_STATE_DIR/tailscaled.sock"
 
@@ -424,6 +428,7 @@ login_tailscale() {
   tailscale_auth_available || { echo "tailscale: skipped login (no TS_AUTH_KEY or BWS_ACCESS_TOKEN)"; return; }
   local ts_cmd=(tailscale) up_cmd=(sudo tailscale) keyfile
   if use_userspace_tailscale; then
+    TS_HOSTNAME="${TS_HOSTNAME:-$TS_CONTAINER_HOSTNAME}"
     start_userspace_tailscaled
     ts_cmd=(tailscale --socket="$TS_SOCKET")
     up_cmd=("${ts_cmd[@]}")
@@ -438,7 +443,7 @@ login_tailscale() {
   chmod 600 "$keyfile"
   TMP_PATHS+=("$keyfile")
   write_tailscale_keyfile "$keyfile"
-  "${up_cmd[@]}" up --auth-key="file:$keyfile"
+  "${up_cmd[@]}" up --auth-key="file:$keyfile" ${TS_HOSTNAME:+--hostname="$TS_HOSTNAME"}
   echo "tailscale connected"
 }
 
@@ -830,14 +835,17 @@ sys.stdout.write(secrets.get("CLOUDFLARE_API_TOKEN", ""))
 fi
 ENVSH
   chmod 600 "$env_file"
-  local default_rc=".bashrc" rc source_line="[ -f \"$env_file\" ] && . \"$env_file\""
+  local default_rc=".bashrc" rc shell_name source_line="[ -f \"$env_file\" ] && . \"$env_file\""
   [ "$(uname -s)" != "Darwin" ] || default_rc=".zshrc"
   [ -e "$HOME/$default_rc" ] || touch "$HOME/$default_rc"
   for rc in .bashrc .zshrc; do
     [ -e "$HOME/$rc" ] || continue
     grep -qF "$env_file" "$HOME/$rc" || printf '\n# install-tools: CLOUDFLARE_API_TOKEN from bws\n%s\n' "$source_line" >> "$HOME/$rc"
+    shell_name="${rc#.}"
+    shell_name="${shell_name%rc}"
+    grep -q "mise activate" "$HOME/$rc" || printf '\n# install-tools: mise tools on PATH\ncommand -v mise >/dev/null 2>&1 && eval "$(mise activate %s)"\n' "$shell_name" >> "$HOME/$rc"
   done
-  echo "shell: new shells export CLOUDFLARE_API_TOKEN from bws via $env_file"
+  echo "shell: new shells export CLOUDFLARE_API_TOKEN from bws via $env_file and activate mise"
 }
 
 tool_version() {
