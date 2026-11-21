@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs bws (Bitwarden Secrets Manager CLI), gh (GitHub CLI, latest release),
 # mise (latest release), cf (Cloudflare CLI, beta), wrangler, biome (latest, npm), cloudflared,
-# browse (Browserbase CLI), gitleaks, dev utils (jq, rg, fd, shellcheck, shfmt, sqlite3) and Tailscale.
+# browse (Browserbase CLI), gitleaks, dev utils (jq, rg, fd, shellcheck, shfmt, sqlite3), Tailscale
+# and pipiops (private repo: the pipimcp MCP server and the pipicli command, cloned with the logged-in gh).
 # Also sets the global git identity, pull.rebase and a global pre-commit hook that scans
 # staged changes with gitleaks.
 # Linux x86_64 / arm64 and macOS. Idempotent: skips tools already installed.
@@ -14,7 +15,10 @@
 #              sourced from ~/.bashrc / ~/.zshrc and reads bws when BWS_ACCESS_TOKEN is set.
 #   browse     uses BB_API_KEY, read from the bws secret of that name.
 #   tailscale  logs in with the TS_AUTH_KEY env var, else the TS_AUTH_KEY bws secret.
+#   pipimcp/pipicli  use PIPIMCP_PR_WORKSPACE_TOKEN: env var, else ~/.config/pipimcp/pr-workspace.token,
+#              else the bws secret of that name. This script only reports which source is found.
 # Without BWS_ACCESS_TOKEN (or TS_AUTH_KEY for tailscale) the tools are installed but not authenticated.
+# pipiops is skipped, with a message, when gh is not logged in (gh auth login) or Node is too old.
 # In containers without TUN/systemd tailscaled runs in userspace mode and ~/.ssh/config
 # routes tailnet hosts through `tailscale nc`.
 # Set SKIP_AUTH=1 to install only.
@@ -320,6 +324,63 @@ install_tailscale() {
   echo "tailscale installed: $(tailscale version | head -1)"
 }
 
+PIPIOPS_REPO="${PIPIOPS_REPO:-nguyenhuy158/pipiops}"
+PIPIOPS_DIR="${PIPIOPS_DIR:-$HOME/.local/share/pipiops}"
+PIPIOPS_TOKEN_NAME="PIPIMCP_PR_WORKSPACE_TOKEN"
+PIPIOPS_TOKEN_FILE="$HOME/.config/pipimcp/pr-workspace.token"
+PIPIOPS_NODE_MIN_MAJOR=22
+
+pipiops_token_source() {
+  if [ -n "${PIPIMCP_PR_WORKSPACE_TOKEN:-}" ]; then
+    echo "env"
+  elif [ -s "$PIPIOPS_TOKEN_FILE" ]; then
+    echo "file"
+  elif can_authenticate && bws_secret "$PIPIOPS_TOKEN_NAME" >/dev/null 2>&1; then
+    echo "bws"
+  else
+    echo "none"
+  fi
+}
+
+install_pipiops() {
+  gh auth status >/dev/null 2>&1 \
+    || { echo "pipiops: skipped (gh is not logged in; run 'gh auth login' and run this script again)"; return 0; }
+  command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1 \
+    || { echo "pipiops: skipped (node and npm not found)"; return 0; }
+  local node_major
+  node_major="$(node -p 'process.versions.node.split(".")[0]')"
+  [ "$node_major" -ge "$PIPIOPS_NODE_MIN_MAJOR" ] 2>/dev/null \
+    || { echo "pipiops: skipped (needs Node >= $PIPIOPS_NODE_MIN_MAJOR, found $(node --version))"; return 0; }
+  if [ -d "$PIPIOPS_DIR/.git" ]; then
+    git -C "$PIPIOPS_DIR" pull --ff-only -q \
+      || echo "pipiops: could not update $PIPIOPS_DIR, keeping the current copy" >&2
+  else
+    mkdir -p "$(dirname "$PIPIOPS_DIR")"
+    gh repo clone "$PIPIOPS_REPO" "$PIPIOPS_DIR" -- --depth 1 -q \
+      || { echo "pipiops: clone of $PIPIOPS_REPO failed" >&2; return 1; }
+  fi
+  (cd "$PIPIOPS_DIR" && npm ci --omit=dev --no-audit --no-fund --silent) \
+    || { echo "pipiops: npm ci failed in $PIPIOPS_DIR" >&2; return 1; }
+  local entry
+  for entry in pipimcp:server pipicli:cli; do
+    $SUDO ln -sf "$PIPIOPS_DIR/src/${entry##*:}.mjs" "$INSTALL_DIR/${entry%%:*}" \
+      || { echo "pipiops: could not link ${entry%%:*} into $INSTALL_DIR" >&2; return 1; }
+  done
+  echo "pipiops installed: pipimcp and pipicli ($PIPIOPS_DIR)"
+  local token_source
+  token_source="$(pipiops_token_source)"
+  if [ "$token_source" = "none" ]; then
+    echo "pipiops: no PR workspace token found; set $PIPIOPS_TOKEN_NAME, or add it as a bws secret"
+  else
+    echo "pipiops: PR workspace token found ($token_source)"
+  fi
+}
+
+pipiops_version() {
+  [ -d "$PIPIOPS_DIR/.git" ] || { echo "not installed"; return; }
+  git -C "$PIPIOPS_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown"
+}
+
 verify_cf_token() {
   can_authenticate || { echo "cf: skipped token check (no BWS_ACCESS_TOKEN or SKIP_AUTH=1)"; return; }
   local token
@@ -520,6 +581,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | gitleaks | $(tool_version gitleaks) | secret scanner; pre-commit hook in \`$GIT_HOOKS_DIR\` |
 | jq, rg, fd, shellcheck, shfmt | $(tool_version jq) / $(tool_version rg) | dev utils; installed only when missing |
 | tailscale | $(tool_version tailscale) | $(tailscale_state) |
+| pipimcp, pipicli (pipiops) | $(pipiops_version) | PR workspace token source: $(pipiops_token_source) |
 
 ## Where the tokens come from
 
@@ -529,6 +591,7 @@ Set up by \`install-tools.sh\` on $(date -u +"%Y-%m-%d %H:%M UTC") (host: $(host
 | cf, wrangler | \`CLOUDFLARE_API_TOKEN\` | bws secret with the same name; new shells export it via \`~/.config/install-tools/env.sh\` |
 | browse | \`BB_API_KEY\` | bws secret with the same name |
 | tailscale | \`TS_AUTH_KEY\` | environment variable, else bws secret; used by \`tailscale up\` |
+| pipimcp, pipicli | \`PIPIMCP_PR_WORKSPACE_TOKEN\` | environment variable, else \`~/.config/pipimcp/pr-workspace.token\`, else bws secret |
 
 No secret is stored in this file or in the script.
 
@@ -571,6 +634,7 @@ main() {
   install_gitleaks
   install_dev_utils
   install_tailscale
+  install_pipiops || failed=1
   setup_git_identity || failed=1
   setup_gitleaks_hook || failed=1
   verify_cf_token || failed=1
