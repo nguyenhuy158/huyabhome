@@ -14,7 +14,8 @@ import { useTranslation } from "react-i18next";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
 import { useLoaderData } from "react-router";
 import { PageHeader } from "../components/PageHeader";
-import { loadProjects, type Project } from "../data/projects";
+import type { Project } from "../data/projects";
+import { projectService } from "~/server/compose";
 import {
   displayHost,
   initials,
@@ -43,8 +44,7 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { env } = context.cloudflare;
-  const projects = await loadProjects(env.DB);
+  const projects = await projectService(context).list();
   return { projects };
 }
 

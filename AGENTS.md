@@ -17,7 +17,7 @@ app/                           # React Router app (SSR)
     api.*.tsx                  #   Server resource routes (notes, holidays, ...)
   server/                      #   Server hexagon (see "Server hexagon" below)
     core/                      #     domain/ pure rules, application/ use cases, ports.ts
-    adapters/                  #     kv/ (KV stores), http/ (cookie, JSON, driving adapters), system/ (uuid, clock)
+    adapters/                  #     kv/, d1/ (stores), web/ (site probe), static/ (bundled CSV), http/ (driving), system/ (uuid, clock)
     compose.ts                 #     The only place that wires adapters into the core
   components/                  #   Shared UI components (PascalCase)
   utils/                       #   Pure helpers, hooks + small clients (text-case, notes, theme, games links, ...)
@@ -117,18 +117,21 @@ Node version in `.nvmrc`).
 ### Server hexagon
 
 The server side is moving to ports and adapters, one feature at a time. Done:
-notes. Still in the route files: holidays, projects status, the curl CLI, the
-games redirect and the online counter.
+notes, projects (page loader and live status) and holidays. Still outside it:
+the curl CLI, the games redirect and the online counter (`workers/`).
 
 - `app/server/core` has no IO: no `fetch`, KV, D1, cookies, `Request`/`Response`,
   `uuid`, `console`, `new Date()` or `Date.now()`. It imports only core files.
   Time and ids come in through the `Clock` and `IdGenerator` ports.
-- `app/server/adapters/{kv,http,system}` implement the ports (KV store, HTTP
-  driving adapter, uuid and clock). An adapter imports core and its own folder,
-  never another adapter.
-- `app/server/compose.ts` is the only file that imports adapters. A migrated
-  route (`app/routes/api.notes*.tsx`) imports only `react-router` and `compose`,
-  and each export is one call.
+- `app/server/adapters/{kv,d1,web,static,http,system}` implement the ports (KV
+  and D1 stores, site probe, bundled CSV, HTTP driving adapters, uuid and
+  clock). An adapter imports core and its own folder, never another adapter.
+- `app/server/compose.ts` is the only file that imports adapters. Outside
+  `app/server`, code may import only `compose` and `core/domain` (pure types and
+  rules, which the client reuses through `app/data/projects.ts` and
+  `app/utils/project-stats.ts`). A migrated API route
+  (`app/routes/api.{notes,notes_.$id,projects-status,holidays}.tsx`) imports only
+  `react-router` and `compose`, and each export is one call.
 - New server feature: domain rule, port, use case and its unit test with fake
   ports first, then the adapter, then the route. `__tests__/server/architecture.test.ts`
   fails when a layer imports across a boundary.

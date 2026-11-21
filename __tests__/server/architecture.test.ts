@@ -7,9 +7,17 @@ const SERVER = join(APP, "server");
 const CORE = join(SERVER, "core");
 const ADAPTERS = join(SERVER, "adapters");
 const COMPOSE = join(SERVER, "compose.ts");
-const ADAPTER_KINDS = ["kv", "http", "system"];
-const MIGRATED_ROUTES = ["api.notes.tsx", "api.notes_.$id.tsx"];
+const CORE_DOMAIN = join(CORE, "domain");
+const ADAPTER_KINDS = ["kv", "http", "system", "d1", "web", "static"];
+const MIGRATED_ROUTES = [
+  "api.notes.tsx",
+  "api.notes_.$id.tsx",
+  "api.projects-status.tsx",
+  "api.holidays.tsx",
+];
 const ALLOWED_ROUTE_IMPORTS = ["react-router", COMPOSE.replace(/\.ts$/, "")];
+const GENERATED_ROUTE_TYPES = "/+types/";
+const BUNDLED_ASSET = "?raw";
 const IMPORT = /\bfrom\s+"([^"]+)"|\bimport\("([^"]+)"\)/g;
 const IO = new RegExp(
   [
@@ -85,19 +93,27 @@ describe("server hexagon boundaries", () => {
           (target) =>
             inside(own, target) ||
             inside(CORE, target) ||
+            target.endsWith(BUNDLED_ASSET) ||
             (!target.startsWith("/") && !target.startsWith("react-router")),
         ),
       ).toEqual([]);
     },
   );
 
-  it("only compose.ts imports adapters", () => {
+  it("code outside the server imports only compose and core/domain from it", () => {
     const importers = files(APP)
-      .filter((file) => !inside(ADAPTERS, file) && file !== COMPOSE)
-      .filter((file) =>
-        importsOf(file).some((target) => inside(ADAPTERS, target)),
+      .filter((file) => !inside(SERVER, file))
+      .flatMap((file) =>
+        importsOf(file)
+          .filter((target) => inside(SERVER, target))
+          .filter(
+            (target) =>
+              target !== COMPOSE.replace(/\.ts$/, "") &&
+              !inside(CORE_DOMAIN, target),
+          )
+          .map((target) => show(file, target)),
       );
-    expect(importers.map((file) => relative(APP, file))).toEqual([]);
+    expect(importers).toEqual([]);
   });
 
   it("the migrated routes import only react-router and compose", () => {
@@ -107,7 +123,11 @@ describe("server hexagon boundaries", () => {
     expect(routes).toHaveLength(MIGRATED_ROUTES.length);
     const found = routes.flatMap((file) =>
       importsOf(file)
-        .filter((target) => !ALLOWED_ROUTE_IMPORTS.includes(target))
+        .filter(
+          (target) =>
+            !ALLOWED_ROUTE_IMPORTS.includes(target) &&
+            !target.includes(GENERATED_ROUTE_TYPES),
+        )
         .map((target) => show(file, target)),
     );
     expect(found).toEqual([]);
