@@ -89,6 +89,25 @@ sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
+RELEASE_TAG_CANDIDATES=3
+
+latest_tag_with_asset() {
+  local repo="$1" template="$2" installed="${3:-}" tag asset
+  for tag in $(git ls-remote --tags --refs "https://github.com/$repo" 'v*' \
+    | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV | head -n "$RELEASE_TAG_CANDIDATES"); do
+    if [ -n "$installed" ] && [ "${tag#v}" = "$installed" ]; then
+      echo "$tag"
+      return
+    fi
+    asset="${template//@TAG@/$tag}"
+    asset="${asset//@VERSION@/${tag#v}}"
+    if "${CURL[@]}" -I -o /dev/null "https://github.com/$repo/releases/download/$tag/$asset" 2>/dev/null; then
+      echo "$tag"
+      return
+    fi
+  done
+}
+
 install_gh() {
   case "$(uname -s)" in
     Darwin)
@@ -99,11 +118,10 @@ install_gh() {
       ;;
   esac
   local tag version installed workdir asset
-  tag="$(git ls-remote --tags --refs https://github.com/cli/cli 'v*' \
-    | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+  installed="$(command -v gh >/dev/null 2>&1 && gh --version | sed -n '1s/^gh version \([0-9.]*\).*/\1/p' || true)"
+  tag="$(latest_tag_with_asset cli/cli "gh_@VERSION@_linux_${GH_ARCH}.tar.gz" "$installed")"
   [ -n "$tag" ] || { echo "gh: could not find the latest release tag" >&2; exit 1; }
   version="${tag#v}"
-  installed="$(command -v gh >/dev/null 2>&1 && gh --version | sed -n '1s/^gh version \([0-9.]*\).*/\1/p' || true)"
   if [ "$installed" = "$version" ]; then
     echo "gh already at latest: $version"
     return
@@ -130,11 +148,10 @@ install_mise() {
       ;;
   esac
   local tag version installed workdir asset
-  tag="$(git ls-remote --tags --refs https://github.com/jdx/mise 'v*' \
-    | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+  installed="$(command -v mise >/dev/null 2>&1 && mise --version | awk '{print $1}' || true)"
+  tag="$(latest_tag_with_asset jdx/mise "mise-@TAG@-linux-${MISE_ARCH}" "$installed")"
   [ -n "$tag" ] || { echo "mise: could not find the latest release tag" >&2; exit 1; }
   version="${tag#v}"
-  installed="$(command -v mise >/dev/null 2>&1 && mise --version | awk '{print $1}' || true)"
   if [ "$installed" = "$version" ]; then
     echo "mise already at latest: $version"
     return
@@ -164,8 +181,7 @@ install_gitleaks() {
       ;;
   esac
   local tag version workdir asset
-  tag="$(git ls-remote --tags --refs https://github.com/gitleaks/gitleaks 'v*' \
-    | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+  tag="$(latest_tag_with_asset gitleaks/gitleaks "gitleaks_@VERSION@_linux_${GITLEAKS_ARCH}.tar.gz")"
   [ -n "$tag" ] || { echo "gitleaks: could not find the latest release tag" >&2; exit 1; }
   version="${tag#v}"
   asset="gitleaks_${version}_linux_${GITLEAKS_ARCH}.tar.gz"
@@ -330,6 +346,10 @@ PIPIOPS_TOKEN_NAME="PIPIMCP_PR_WORKSPACE_TOKEN"
 PIPIOPS_TOKEN_FILE="$HOME/.config/pipimcp/pr-workspace.token"
 PIPIOPS_NODE_MIN_MAJOR=22
 
+pipiops_git() {
+  git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "$@"
+}
+
 pipiops_token_source() {
   if [ -n "${PIPIMCP_PR_WORKSPACE_TOKEN:-}" ]; then
     echo "env"
@@ -352,11 +372,11 @@ install_pipiops() {
   [ "$node_major" -ge "$PIPIOPS_NODE_MIN_MAJOR" ] 2>/dev/null \
     || { echo "pipiops: skipped (needs Node >= $PIPIOPS_NODE_MIN_MAJOR, found $(node --version))"; return 0; }
   if [ -d "$PIPIOPS_DIR/.git" ]; then
-    git -C "$PIPIOPS_DIR" pull --ff-only -q \
+    pipiops_git -C "$PIPIOPS_DIR" pull --ff-only -q \
       || echo "pipiops: could not update $PIPIOPS_DIR, keeping the current copy" >&2
   else
     mkdir -p "$(dirname "$PIPIOPS_DIR")"
-    gh repo clone "$PIPIOPS_REPO" "$PIPIOPS_DIR" -- --depth 1 -q \
+    pipiops_git clone --depth 1 -q "https://github.com/$PIPIOPS_REPO" "$PIPIOPS_DIR" \
       || { echo "pipiops: clone of $PIPIOPS_REPO failed" >&2; return 1; }
   fi
   (cd "$PIPIOPS_DIR" && npm ci --omit=dev --no-audit --no-fund --silent) \

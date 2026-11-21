@@ -86,18 +86,52 @@ const URL_LAST = /\shttps:\/\/\S+$/;
 const GH_LOGGED_OUT = `[ "$1" = auth ] && exit 1
 echo "gh version 9.9.9"`;
 
-const ghCloneBody = (log: string) => `
-echo "$*" >> "${log}"
-case "$1" in
+const GH_LOGGED_IN = `case "$1" in
   auth) exit 0 ;;
-  repo)
-    dir="$4"
+  repo) echo "gh repo must not be called" >&2; exit 1 ;;
+esac
+echo "gh version 9.9.9"`;
+
+const gitCloneBody = (log: string, cloneStatus = 0) => `
+echo "$*" >> "${log}"
+case " $* " in
+  *" clone "*)
+    [ ${cloneStatus} -ne 0 ] && exit ${cloneStatus}
+    dir="\${@: -1}"
     mkdir -p "$dir/.git" "$dir/src"
     : > "$dir/src/server.mjs"
     : > "$dir/src/cli.mjs"
     exit 0 ;;
 esac
-echo "gh version 9.9.9"`;
+printf "abc\\trefs/tags/v9.9.9\\n"`;
+
+const HEAD_FLAG = " -I ";
+const withoutHeads = (lines: string[]) =>
+  lines.filter((line) => !line.includes(HEAD_FLAG));
+
+const OLD_TAG = "v9.9.8";
+const TWO_TAGS = `printf "abc\\trefs/tags/v9.9.9\\nabc\\trefs/tags/${OLD_TAG}\\n"`;
+
+const fallbackCurlBody = (log: string, sum: string) => `
+echo "$*" >> "${log}"
+out=""
+url=""
+head=0
+while [ $# -gt 0 ]; do
+  [ "$1" = "-o" ] && out="$2"
+  [ "$1" = "-I" ] && head=1
+  url="$1"
+  shift
+done
+case "$url" in
+  *v9.9.9*) exit 22 ;;
+esac
+[ "$head" = 1 ] && exit 0
+case "$url" in
+  *SHASUMS256.txt) printf '%s  ./mise-${OLD_TAG}-linux-${MISE_ARCH}\\n' '${sum}' > "$out" ;;
+  *) printf '#!/bin/bash\\necho "9.9.9 linux-${MISE_ARCH}"\\n' > "$out" ;;
+esac
+exit 0`;
 
 const NODE_22 = `case "$1" in
   -p) echo 22 ;;
@@ -178,12 +212,54 @@ exit 0`,
     expect(result.stdout).toContain(
       `mise installed: 9.9.9 linux-${MISE_ARCH} (was: 1.0.0)`,
     );
-    const calls = readFileSync(log, "utf8").trim().split("\n");
+    const all = readFileSync(log, "utf8").trim().split("\n");
+    const calls = withoutHeads(all);
     expect(calls).toHaveLength(2);
-    for (const call of calls) {
+    expect(all).toHaveLength(3);
+    for (const call of all) {
       expect(call).toMatch(URL_LAST);
       expect(call).toContain("github.com/jdx/mise/releases/download/v9.9.9/");
     }
+  });
+
+  it("uses the previous mise release when the newest tag has no files", () => {
+    const log = join(root, "curl.log");
+    stub(bin, "mise", `echo "1.0.0 linux-${MISE_ARCH}"`);
+    stub(bin, "git", TWO_TAGS);
+    stub(bin, "curl", fallbackCurlBody(log, sha256(MISE_BINARY)));
+    const result = run({ SKIP_AUTH: "1" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("mise installed");
+    const calls = readFileSync(log, "utf8").trim().split("\n");
+    const downloads = withoutHeads(calls);
+    expect(downloads).toHaveLength(2);
+    for (const call of downloads) {
+      expect(call).toContain(`/jdx/mise/releases/download/${OLD_TAG}/`);
+    }
+    expect(calls.filter((call) => call.includes("/v9.9.9/"))).toHaveLength(1);
+  });
+
+  it("treats the installed mise as latest when the newest tag has no files", () => {
+    const log = join(root, "curl.log");
+    stub(bin, "mise", `echo "9.9.8 linux-${MISE_ARCH}"`);
+    stub(bin, "git", TWO_TAGS);
+    stub(bin, "curl", fallbackCurlBody(log, sha256(MISE_BINARY)));
+    const result = run({ SKIP_AUTH: "1" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("mise already at latest: 9.9.8");
+    expect(withoutHeads(readFileSync(log, "utf8").trim().split("\n"))).toEqual(
+      [],
+    );
+  });
+
+  it("stops with a clear message when no recent tag has files", () => {
+    stub(bin, "mise", `echo "1.0.0 linux-${MISE_ARCH}"`);
+    stub(bin, "curl", "exit 22");
+    const result = run({ SKIP_AUTH: "1" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "mise: could not find the latest release tag",
+    );
   });
 
   it("refuses a mise download with a wrong checksum", () => {
@@ -222,9 +298,9 @@ exit 0`,
     const result = run({ SKIP_AUTH: "1" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("checksum mismatch");
-    const calls = readFileSync(log, "utf8").trim().split("\n");
-    expect(calls).toHaveLength(2);
-    for (const call of calls) expect(call).toMatch(URL_LAST);
+    const all = readFileSync(log, "utf8").trim().split("\n");
+    expect(withoutHeads(all)).toHaveLength(2);
+    for (const call of all) expect(call).toMatch(URL_LAST);
   });
 
   it("installs a missing tool and cleans its temp dir without errors", () => {
@@ -274,8 +350,9 @@ exit 0`,
   });
 
   it("clones pipiops, installs its deps and links pipimcp and pipicli", () => {
-    const ghLog = join(root, "gh.log");
-    stub(bin, "gh", ghCloneBody(ghLog));
+    const gitLog = join(root, "git.log");
+    stub(bin, "gh", GH_LOGGED_IN);
+    stub(bin, "git", gitCloneBody(gitLog));
     stub(bin, "node", NODE_22);
     const token = "secret-token-value";
     const result = run({
@@ -284,8 +361,10 @@ exit 0`,
     });
     expect(result.status, result.stderr).toBe(0);
     const dir = join(home, ".local/share/pipiops");
-    expect(readFileSync(ghLog, "utf8")).toContain(
-      `repo clone nguyenhuy158/pipiops ${dir} -- --depth 1 -q`,
+    const gitCalls = readFileSync(gitLog, "utf8");
+    expect(gitCalls).toContain("credential.helper=!gh auth git-credential");
+    expect(gitCalls).toContain(
+      `clone --depth 1 -q https://github.com/nguyenhuy158/pipiops ${dir}`,
     );
     expect(readFileSync(join(root, "npm.log"), "utf8")).toContain(
       "ci --omit=dev",
@@ -302,7 +381,8 @@ exit 0`,
   });
 
   it("reports when pipiops has no token source", () => {
-    stub(bin, "gh", ghCloneBody(join(root, "gh.log")));
+    stub(bin, "gh", GH_LOGGED_IN);
+    stub(bin, "git", gitCloneBody(join(root, "git.log")));
     stub(bin, "node", NODE_22);
     const result = run({ SKIP_AUTH: "1" });
     expect(result.status, result.stderr).toBe(0);
@@ -310,7 +390,8 @@ exit 0`,
   });
 
   it("reads the pipiops token source from the token file", () => {
-    stub(bin, "gh", ghCloneBody(join(root, "gh.log")));
+    stub(bin, "gh", GH_LOGGED_IN);
+    stub(bin, "git", gitCloneBody(join(root, "git.log")));
     stub(bin, "node", NODE_22);
     const dir = join(home, ".config/pipimcp");
     mkdirSync(dir, { recursive: true });
@@ -321,35 +402,24 @@ exit 0`,
   });
 
   it("updates an existing pipiops clone instead of cloning again", () => {
-    const ghLog = join(root, "gh.log");
     const gitLog = join(root, "git.log");
-    stub(bin, "gh", ghCloneBody(ghLog));
+    stub(bin, "gh", GH_LOGGED_IN);
+    stub(bin, "git", gitCloneBody(gitLog));
     stub(bin, "node", NODE_22);
-    stub(
-      bin,
-      "git",
-      `echo "$*" >> "${gitLog}"
-printf "abc\\trefs/tags/v9.9.9\\n"`,
-    );
     const dir = join(home, ".local/share/pipiops");
     mkdirSync(join(dir, ".git"), { recursive: true });
     mkdirSync(join(dir, "src"));
     const result = run({ SKIP_AUTH: "1" });
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(gitLog, "utf8")).toContain(
-      `-C ${dir} pull --ff-only -q`,
-    );
-    expect(readFileSync(ghLog, "utf8")).not.toContain("repo clone");
+    const gitCalls = readFileSync(gitLog, "utf8");
+    expect(gitCalls).toContain(`-C ${dir} pull --ff-only -q`);
+    expect(gitCalls).toContain("credential.helper=!gh auth git-credential");
+    expect(gitCalls).not.toContain(" clone ");
   });
 
   it("fails but keeps going when the pipiops clone fails", () => {
-    stub(
-      bin,
-      "gh",
-      `[ "$1" = repo ] && exit 1
-[ "$1" = auth ] && exit 0
-echo "gh version 9.9.9"`,
-    );
+    stub(bin, "gh", GH_LOGGED_IN);
+    stub(bin, "git", gitCloneBody(join(root, "git.log"), 128));
     stub(bin, "node", NODE_22);
     const result = run({ SKIP_AUTH: "1" });
     expect(result.status).toBe(1);
