@@ -1,4 +1,6 @@
+import type { Holiday } from "./domain/holiday";
 import type { Note } from "./domain/note";
+import type { Project } from "./domain/project";
 
 export interface NoteStore {
   getNote(id: string): Promise<Note | null>;
@@ -14,4 +16,20 @@ export interface IdGenerator {
 
 export interface Clock {
   now(): string;
+}
+
+export type ProbeResult =
+  | { ok: boolean; httpStatus: number; ms: number }
+  | { error: string };
+
+export interface SiteProbe {
+  ping(url: string): Promise<ProbeResult>;
+}
+
+export interface ProjectCatalog {
+  list(): Promise<Project[]>;
+}
+
+export interface HolidaySource {
+  load(): Promise<Holiday[]>;
 }

@@ -4,56 +4,11 @@
  */
 import type { Project } from "../data/projects";
 
-export interface ProjectStatus {
-  id: string;
-  /** null when the check was skipped or has not run yet. */
-  online: boolean | null;
-  /** Round-trip time in ms, null when unknown. */
-  ms: number | null;
-  /** HTTP status when reached. */
-  httpStatus?: number;
-  /** Populated when the fetch failed outright. */
-  error?: string;
-  /**
-   * True when this is the site serving the request, so it was reported up
-   * without a fetch (a Worker cannot reach its own zone).
-   */
-  self?: boolean;
-}
-
-export interface StatusSummary {
-  total: number;
-  checked: number;
-  online: number;
-  offline: number;
-  /** Median, not mean — one slow site should not skew the headline number. */
-  medianMs: number | null;
-}
-
-/** Aggregate the per-site checks into the numbers shown in the header. */
-export function summarize(statuses: ProjectStatus[]): StatusSummary {
-  const checked = statuses.filter((s) => s.online !== null);
-  const times = checked
-    .map((s) => s.ms)
-    .filter((ms): ms is number => typeof ms === "number")
-    .sort((a, b) => a - b);
-
-  return {
-    total: statuses.length,
-    checked: checked.length,
-    online: checked.filter((s) => s.online === true).length,
-    offline: checked.filter((s) => s.online === false).length,
-    medianMs: median(times),
-  };
-}
-
-function median(sorted: number[]): number | null {
-  if (sorted.length === 0) return null;
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1
-    ? sorted[mid]
-    : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
-}
+export type {
+  ProjectStatus,
+  StatusSummary,
+} from "../server/core/domain/project-status";
+export { summarize } from "../server/core/domain/project-status";
 
 /** Hostname without the www. prefix, for display under the project name. */
 export function displayHost(url: string): string {

@@ -1,15 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, it, expect, beforeAll } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import type { Project } from "~/data/projects";
+import { createD1ProjectCatalog } from "~/server/adapters/d1/d1-project-catalog";
 import {
   displayHost,
   initials,
   latencyBand,
+  type ProjectStatus,
   sortForDisplay,
   summarize,
-  type ProjectStatus,
 } from "~/utils/project-stats";
-import { loadProjects, type Project } from "~/data/projects";
 import { remoteD1 } from "./d1-fixture";
 
 const project = (over: Partial<Project> = {}): Project => ({
@@ -152,7 +153,7 @@ describe("Project stats", () => {
     let PROJECTS: Project[];
 
     beforeAll(async () => {
-      PROJECTS = await loadProjects(remoteD1("db"));
+      PROJECTS = await createD1ProjectCatalog(remoteD1("db")).list();
     });
 
     it("has unique ids", () => {
@@ -184,10 +185,9 @@ describe("Project stats", () => {
       const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
       for (const p of PROJECTS) {
         if (!p.image) continue;
-        const head = readFileSync(join(process.cwd(), "public", p.image)).subarray(
-          0,
-          4,
-        );
+        const head = readFileSync(
+          join(process.cwd(), "public", p.image),
+        ).subarray(0, 4);
         expect(head.equals(pngMagic), `${p.id} snapshot is not a PNG`).toBe(
           true,
         );

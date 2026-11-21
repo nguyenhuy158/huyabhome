@@ -1,14 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { Project } from "~/data/projects";
+import { createD1ProjectCatalog } from "~/server/adapters/d1/d1-project-catalog";
 import {
   filterProjects,
   matchesQuery,
   normalize,
+  PER_PAGE,
   pageWindow,
   paginate,
   statusCounts,
-  PER_PAGE,
 } from "~/utils/project-search";
-import { loadProjects, type Project } from "~/data/projects";
 import { remoteD1 } from "./d1-fixture";
 
 const project = (over: Partial<Project> = {}): Project => ({
@@ -103,7 +104,9 @@ describe("filterProjects", () => {
 
   it("filters by status", () => {
     expect(filterProjects(list, "", "live").map((p) => p.id)).toEqual(["a"]);
-    expect(filterProjects(list, "", "archived").map((p) => p.id)).toEqual(["c"]);
+    expect(filterProjects(list, "", "archived").map((p) => p.id)).toEqual([
+      "c",
+    ]);
   });
 
   it("combines query and status", () => {
@@ -113,7 +116,7 @@ describe("filterProjects", () => {
 
   it("finds the real projects by a partial name", async () => {
     // Guards the wiring against the shipped data, not just fixtures.
-    const projects = await loadProjects(remoteD1("db"));
+    const projects = await createD1ProjectCatalog(remoteD1("db")).list();
     const hits = filterProjects(projects, "chia keo", "all");
     expect(hits.map((p) => p.id)).toContain("chiakeo");
   });
@@ -140,7 +143,13 @@ describe("paginate", () => {
   it("slices the first page", () => {
     const page = paginate(items, 1, 6);
     expect(page.items).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(page).toMatchObject({ page: 1, totalPages: 3, total: 16, from: 1, to: 6 });
+    expect(page).toMatchObject({
+      page: 1,
+      totalPages: 3,
+      total: 16,
+      from: 1,
+      to: 6,
+    });
   });
 
   it("slices a middle page", () => {
