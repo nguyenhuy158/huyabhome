@@ -55,6 +55,10 @@ install_tools.STEPS                                          # the step names
 
 The bundled script is the same file as `scripts/install-tools.sh` in the repo, where `curl ... | bash` runs every step. The pip command sets `INSTALL_SKIP` for you; to run the script yourself, use the same variable, for example `INSTALL_SKIP="git-identity ssh" bash script.sh`.
 
+## License
+
+MIT. See [LICENSE](https://github.com/nguyenhuy158/huyabhome/blob/main/python/LICENSE). The tools this package installs keep their own licenses.
+
 ## Release (maintainers)
 
 The script is copied here by `pnpm build:install-tools`. Do not edit it by hand.

@@ -1,11 +1,13 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "huyab-install-tools"
-version = "1.0.0"
-description = "Install the generic dev CLI tools (bws, gh, mise, cf, wrangler, biome, cloudflared, browse, gitleaks, jq, rg, fd) with one command. Changes to git, ssh or shell config are opt-in."
+version = "1.0.1"
+license = "MIT"
+license-files = ["LICENSE"]
+description ="Install the generic dev CLI tools (bws, gh, mise, cf, wrangler, biome, cloudflared, browse, gitleaks, jq, rg, fd) with one command. Changes to git, ssh or shell config are opt-in."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []

@@ -15,6 +15,16 @@ describe("python/ pip package huyab-install-tools", () => {
     expect(readFileSync(PIP_COPY, "utf8")).toBe(buildInstallTools());
   });
 
+  it("is MIT licensed: the file, the metadata and a build that can read both", () => {
+    const license = readFileSync(join(ROOT, "python/LICENSE"), "utf8");
+    expect(license.startsWith("MIT License\n")).toBe(true);
+    expect(license).toContain("Copyright (c) 2026 Huy Nguyen (nguyenhuy158)");
+    const project = readFileSync(join(ROOT, "python/pyproject.toml"), "utf8");
+    expect(project).toContain('license = "MIT"');
+    expect(project).toContain('license-files = ["LICENSE"]');
+    expect(project).toMatch(/requires = \["setuptools>=(7[7-9]|[89]\d)"\]/);
+  });
+
   it("passes its Python tests", () => {
     const result = spawnSync(
       "python3",
