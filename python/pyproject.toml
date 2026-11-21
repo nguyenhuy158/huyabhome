@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "huyab-install-tools"
-version = "1.0.1"
+version = "1.1.0"
 license = "MIT"
 license-files = ["LICENSE"]
 description ="Install the generic dev CLI tools (bws, gh, mise, cf, wrangler, biome, cloudflared, browse, gitleaks, jq, rg, fd) with one command. Changes to git, ssh or shell config are opt-in."
@@ -23,6 +23,7 @@ Source = "https://github.com/nguyenhuy158/huyabhome/tree/main/python"
 
 [project.scripts]
 install-tools = "install_tools.cli:main"
+huyab-install-tools = "install_tools.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

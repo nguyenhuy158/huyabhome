@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from . import STEPS, __version__, build_env, run, script_path
+from . import DOCTOR_ARGUMENT, STEPS, __version__, build_env, run, script_path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--git-email", help="git user.email, for --with git-identity")
     parser.add_argument(
         "--skip-auth", action="store_true", help="install only, no login (SKIP_AUTH=1)"
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="check this machine, read-only, instead of installing",
     )
     parser.add_argument("--list-steps", action="store_true", help="list the steps")
     parser.add_argument("--path", action="store_true", help="print the script path")
@@ -63,7 +68,9 @@ def main(argv=None) -> int:
         steps.append("git-identity")
     env = env_from(args)
     try:
-        build_env(env, steps)
+        build_env(env, steps, installing=not args.doctor)
     except ValueError as error:
         parser.error(str(error))
+    if args.doctor:
+        return run(args=[DOCTOR_ARGUMENT], env=env, enable=steps)
     return run(env=env, enable=steps)

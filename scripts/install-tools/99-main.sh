@@ -1,4 +1,4 @@
-main() {
+install_all() {
   local failed=0
   install_bws
   install_gh
@@ -20,6 +20,14 @@ main() {
   run_step shell-env setup_shell_env
   run_step readme write_readme
   return "$failed"
+}
+
+main() {
+  case "${1:-}" in
+    "") install_all ;;
+    doctor) doctor ;;
+    *) echo "usage: install-tools.sh [doctor]" >&2; return 2 ;;
+  esac
 }
 
 main "$@"
