@@ -31,6 +31,16 @@ describe("python/ pip package huyab-install-tools", () => {
     expect(project).toContain('huyab-install-tools = "install_tools.cli:main"');
   });
 
+  it("installs the short command itools, and scripts/itools.sh runs install-tools.sh", () => {
+    const project = readFileSync(join(ROOT, "python/pyproject.toml"), "utf8");
+    expect(project).toContain('itools = "install_tools.cli:main"');
+    const shim = join(ROOT, "scripts/itools.sh");
+    expect(readFileSync(shim, "utf8")).toContain(
+      'huyabhome/main/scripts/install-tools.sh | bash -s -- "$@"',
+    );
+    expect(spawnSync("bash", ["-n", shim]).status).toBe(0);
+  });
+
   it("passes its Python tests", () => {
     const result = spawnSync(
       "python3",
