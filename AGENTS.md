@@ -64,6 +64,11 @@ How this repo fits with the others:
   files you touch rather than the whole tree.
 - `pnpm preview`: build, then serve the production build locally.
 - `pnpm shots`: refresh the project screenshots in `public/projects/`.
+- `pnpm build:install-tools`: join `scripts/install-tools/NN-*.sh` into
+  `scripts/install-tools.sh`. Edit the parts, never the built file: the
+  install command is `curl ... install-tools.sh | bash`, so it must stay one
+  file. A test fails when the built file is out of date, a part is over 100
+  lines or a function over 30.
 - `pnpm e2e`: build, serve with `wrangler dev --local`, run the E2E smoke;
   `pnpm e2e:prod`: the read-only part against `https://huyab.cfd`.
 

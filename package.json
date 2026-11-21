@@ -21,6 +21,7 @@
 		"cf-typegen": "wrangler types",
 		"postinstall": "pnpm cf-typegen",
 		"shots": "node scripts/refresh-project-shots.mjs",
+		"build:install-tools": "node scripts/build-install-tools.mjs",
 		"e2e": "node e2e/run.mjs",
 		"e2e:prod": "E2E_BASE_URL=https://huyab.cfd node e2e/readonly-smoke.mjs"
 	},
