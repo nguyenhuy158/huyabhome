@@ -25,7 +25,6 @@ Source = "https://github.com/nguyenhuy158/huyabhome/tree/main/python"
 install-tools = "install_tools.cli:main"
 itools = "install_tools.cli:main"
 huyab-install-tools = "install_tools.cli:main"
-itools = "install_tools.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

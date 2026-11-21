@@ -2,6 +2,7 @@ import io
 import os
 import subprocess
 import sys
+import tomllib
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -157,6 +158,20 @@ class Cli(unittest.TestCase):
         with self.assertRaises(SystemExit) as stop, redirect_stdout(io.StringIO()):
             cli.main(["--version"])
         self.assertEqual(stop.exception.code, 0)
+
+
+class Metadata(unittest.TestCase):
+    def test_pyproject_is_valid_toml_with_the_three_commands(self):
+        path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        project = tomllib.loads(path.read_text())["project"]
+        self.assertEqual(
+            project["scripts"],
+            {
+                "install-tools": "install_tools.cli:main",
+                "huyab-install-tools": "install_tools.cli:main",
+                "itools": "install_tools.cli:main",
+            },
+        )
 
 
 class Doctor(unittest.TestCase):
