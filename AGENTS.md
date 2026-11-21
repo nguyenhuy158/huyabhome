@@ -15,6 +15,10 @@ app/                           # React Router app (SSR)
   routes.ts                    #   Route table: UI sections + /api/* resource routes
   routes/                      #   Route modules; it/ holds nested tools
     api.*.tsx                  #   Server resource routes (notes, holidays, ...)
+  server/                      #   Server hexagon (see "Server hexagon" below)
+    core/                      #     domain/ pure rules, application/ use cases, ports.ts
+    adapters/                  #     kv/ (KV stores), http/ (cookie, JSON, driving adapters), system/ (uuid, clock)
+    compose.ts                 #     The only place that wires adapters into the core
   components/                  #   Shared UI components (PascalCase)
   utils/                       #   Pure helpers, hooks + small clients (text-case, notes, theme, games links, ...)
   workers/                     #   Web Workers (sentiment.worker.ts)
@@ -109,6 +113,25 @@ Node version in `.nvmrc`).
   feedback.
 - Privacy-first: tools process data in the browser; do not send user input to
   the server unless the feature is explicitly server-backed (Notes).
+
+### Server hexagon
+
+The server side is moving to ports and adapters, one feature at a time. Done:
+notes. Still in the route files: holidays, projects status, the curl CLI, the
+games redirect and the online counter.
+
+- `app/server/core` has no IO: no `fetch`, KV, D1, cookies, `Request`/`Response`,
+  `uuid`, `console`, `new Date()` or `Date.now()`. It imports only core files.
+  Time and ids come in through the `Clock` and `IdGenerator` ports.
+- `app/server/adapters/{kv,http,system}` implement the ports (KV store, HTTP
+  driving adapter, uuid and clock). An adapter imports core and its own folder,
+  never another adapter.
+- `app/server/compose.ts` is the only file that imports adapters. A migrated
+  route (`app/routes/api.notes*.tsx`) imports only `react-router` and `compose`,
+  and each export is one call.
+- New server feature: domain rule, port, use case and its unit test with fake
+  ports first, then the adapter, then the route. `__tests__/server/architecture.test.ts`
+  fails when a layer imports across a boundary.
 
 ## Testing Guidelines
 
