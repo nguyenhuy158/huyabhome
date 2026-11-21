@@ -1,8 +1,8 @@
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 NODE_MIN_MAJOR=22
 NODE_MIN_MINOR=18
-GIT_USER_NAME="huy"
-GIT_USER_EMAIL="huy.ntq02@gmail.com"
+GIT_USER_NAME="${GIT_USER_NAME:-huy}"
+GIT_USER_EMAIL="${GIT_USER_EMAIL:-huy.ntq02@gmail.com}"
 GIT_HOOKS_DIR="${GIT_HOOKS_DIR:-$HOME/.config/git/hooks}"
 DEV_UTILS="${DEV_UTILS:-jq:jq rg:ripgrep fd:fd-find shellcheck:shellcheck shfmt:shfmt sqlite3:sqlite3}"
 

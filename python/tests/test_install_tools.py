@@ -1,8 +1,9 @@
 import io
+import os
 import subprocess
 import sys
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -10,6 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import install_tools  # noqa: E402
 from install_tools import cli  # noqa: E402
+
+ALL_STEPS = " ".join(install_tools.STEPS)
+CLEAN_ENV = {"PATH": os.environ.get("PATH", "")}
 
 
 def completed(code=0):
@@ -31,21 +35,65 @@ class BundledScript(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_every_step_name_is_known_to_the_script(self):
+        script = install_tools.script_path().read_text()
+        for step in install_tools.STEPS:
+            self.assertIn(f"run_step {step} ", script)
+
+
+class SafeByDefault(unittest.TestCase):
+    def test_skips_every_step_unless_enabled(self):
+        self.assertEqual(install_tools.skipped_steps(), ALL_STEPS)
+
+    def test_enabling_a_step_removes_only_that_step(self):
+        skipped = install_tools.skipped_steps(["pipiops", "readme"]).split()
+        self.assertNotIn("pipiops", skipped)
+        self.assertNotIn("readme", skipped)
+        self.assertIn("tailscale", skipped)
+        self.assertEqual(len(skipped), len(install_tools.STEPS) - 2)
+
+    def test_rejects_an_unknown_step(self):
+        with self.assertRaises(ValueError):
+            install_tools.skipped_steps(["nope"])
+
+    def test_git_identity_needs_a_name_and_an_email(self):
+        with mock.patch.dict(os.environ, CLEAN_ENV, clear=True):
+            with self.assertRaises(ValueError):
+                install_tools.build_env({}, ["git-identity"])
+            with self.assertRaises(ValueError):
+                install_tools.build_env({"GIT_USER_NAME": "a"}, ["git-identity"])
+            env = install_tools.build_env(
+                {"GIT_USER_NAME": "a", "GIT_USER_EMAIL": "a@example.com"},
+                ["git-identity"],
+            )
+        self.assertNotIn("git-identity", env["INSTALL_SKIP"].split())
+
+    def test_the_environment_cannot_unskip_steps_by_accident(self):
+        with mock.patch.dict(os.environ, {"INSTALL_SKIP": ""}):
+            self.assertEqual(install_tools.build_env()["INSTALL_SKIP"], ALL_STEPS)
+
+    def test_an_explicit_install_skip_wins(self):
+        env = install_tools.build_env({"INSTALL_SKIP": "readme"})
+        self.assertEqual(env["INSTALL_SKIP"], "readme")
+
 
 class Run(unittest.TestCase):
-    def test_runs_the_script_with_bash_and_merges_the_environment(self):
+    def test_runs_the_script_with_bash_and_the_safe_skip_list(self):
         with mock.patch("subprocess.run", return_value=completed(3)) as run:
             code = install_tools.run(["x"], env={"SKIP_AUTH": "1"})
         self.assertEqual(code, 3)
-        command = run.call_args.args[0]
-        self.assertEqual(command, ["bash", str(install_tools.script_path()), "x"])
+        self.assertEqual(
+            run.call_args.args[0], ["bash", str(install_tools.script_path()), "x"]
+        )
         env = run.call_args.kwargs["env"]
         self.assertEqual(env["SKIP_AUTH"], "1")
+        self.assertEqual(env["INSTALL_SKIP"], ALL_STEPS)
         self.assertIn("PATH", env)
 
     def test_reports_a_missing_bash(self):
         with mock.patch("subprocess.run", side_effect=FileNotFoundError):
-            self.assertEqual(install_tools.run(), install_tools.BASH_NOT_FOUND)
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(install_tools.run(), install_tools.BASH_NOT_FOUND)
 
 
 class Cli(unittest.TestCase):
@@ -65,15 +113,45 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out, install_tools.script_path().read_text())
 
-    def test_skip_auth_sets_the_flag_for_the_script(self):
-        with mock.patch.object(cli, "run", return_value=0) as run:
-            self.assertEqual(cli.main(["--skip-auth"]), 0)
-        run.assert_called_once_with(env={"SKIP_AUTH": "1"})
+    def test_list_steps_prints_every_step(self):
+        code, out = self.output_of(["--list-steps"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out.split(), list(install_tools.STEPS))
 
-    def test_no_option_runs_the_script_unchanged(self):
+    def test_no_option_runs_with_every_personal_step_skipped(self):
         with mock.patch.object(cli, "run", return_value=5) as run:
             self.assertEqual(cli.main([]), 5)
-        run.assert_called_once_with(env=None)
+        run.assert_called_once_with(env={}, enable=[])
+
+    def test_with_enables_a_step_and_skip_auth_sets_the_flag(self):
+        with mock.patch.object(cli, "run", return_value=0) as run:
+            cli.main(["--with", "pipiops", "--with", "readme", "--skip-auth"])
+        run.assert_called_once_with(
+            env={"SKIP_AUTH": "1"}, enable=["pipiops", "readme"]
+        )
+
+    def test_git_name_and_email_turn_on_the_git_identity_step(self):
+        with mock.patch.object(cli, "run", return_value=0) as run:
+            cli.main(["--git-name", "Ann", "--git-email", "ann@example.com"])
+        run.assert_called_once_with(
+            env={"GIT_USER_NAME": "Ann", "GIT_USER_EMAIL": "ann@example.com"},
+            enable=["git-identity"],
+        )
+
+    def test_a_git_name_without_an_email_is_an_error_and_runs_nothing(self):
+        with mock.patch.dict(os.environ, CLEAN_ENV, clear=True):
+            with mock.patch.object(cli, "run") as run:
+                with self.assertRaises(SystemExit) as stop, redirect_stderr(
+                    io.StringIO()
+                ):
+                    cli.main(["--git-name", "Ann"])
+        self.assertEqual(stop.exception.code, 2)
+        run.assert_not_called()
+
+    def test_an_unknown_step_is_an_error(self):
+        with self.assertRaises(SystemExit) as stop, redirect_stderr(io.StringIO()):
+            cli.main(["--with", "nope"])
+        self.assertEqual(stop.exception.code, 2)
 
     def test_version_comes_from_the_package(self):
         with self.assertRaises(SystemExit) as stop, redirect_stdout(io.StringIO()):

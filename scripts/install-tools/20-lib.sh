@@ -2,6 +2,21 @@ require_brew() {
   command -v brew >/dev/null 2>&1 || { echo "Homebrew not found; install it first (https://brew.sh)" >&2; exit 1; }
 }
 
+step_skipped() {
+  case " ${INSTALL_SKIP:-} " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+run_step() {
+  if step_skipped "$1"; then
+    echo "$1: skipped (INSTALL_SKIP)"
+    return 0
+  fi
+  "$2"
+}
+
 brew_upgrade_or_install() {
   require_brew
   if command -v "$1" >/dev/null 2>&1; then brew upgrade "$1" || true; else brew install "$1"; fi
