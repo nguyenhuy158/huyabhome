@@ -1,16 +1,16 @@
-import { describe, it, expect } from "vitest";
-import {
-  OWNER_COOKIE,
-  listKeyFor,
-  ownerCookieHeader,
-  ownsNote,
-  readOwnerId,
-} from "~/utils/notes-owner";
-import { loader as listNotes, action as createNote } from "~/routes/api.notes";
+import { describe, expect, it } from "vitest";
+import { action as createNote, loader as listNotes } from "~/routes/api.notes";
 import {
   loader as getNote,
   action as noteAction,
 } from "~/routes/api.notes_.$id";
+import {
+  OWNER_COOKIE,
+  ownerCookieHeader,
+  readOwnerId,
+} from "~/server/adapters/http/owner-cookie";
+import { ownerListKey as listKeyFor } from "~/server/adapters/kv/kv-note-store";
+import { ownsNote } from "~/server/core/domain/note";
 
 const OWNER_A = "11111111-2222-3333-4444-555555555555";
 const OWNER_B = "99999999-8888-7777-6666-555555555555";
