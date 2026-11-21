@@ -17,7 +17,8 @@
 #              ~/.bashrc / ~/.zshrc also get `mise activate`, so mise tools (and their node) are on PATH.
 #   browse     uses BB_API_KEY, read from the bws secret of that name.
 #   tailscale  logs in with the TS_AUTH_KEY env var, else the TS_AUTH_KEY bws secret.
-#              Set TS_HOSTNAME to give the node a fixed tailnet name (default: the machine hostname).
+#              Set TS_HOSTNAME to give the node a fixed tailnet name (default: claude-cloud in
+#              userspace/container mode, else the machine hostname).
 #   pipimcp/pipicli  use PIPIMCP_PR_WORKSPACE_TOKEN: env var, else ~/.config/pipimcp/pr-workspace.token,
 #              else the bws secret of that name. This script only reports which source is found.
 # Without BWS_ACCESS_TOKEN (or TS_AUTH_KEY for tailscale) the tools are installed but not authenticated.
@@ -360,6 +361,7 @@ install_cloudflared() {
   echo "cloudflared installed: $(cloudflared --version | head -1)"
 }
 
+TS_CONTAINER_HOSTNAME="claude-cloud"
 TS_STATE_DIR="${TS_STATE_DIR:-$HOME/.local/share/tailscale}"
 TS_SOCKET="$TS_STATE_DIR/tailscaled.sock"
 
@@ -426,6 +428,7 @@ login_tailscale() {
   tailscale_auth_available || { echo "tailscale: skipped login (no TS_AUTH_KEY or BWS_ACCESS_TOKEN)"; return; }
   local ts_cmd=(tailscale) up_cmd=(sudo tailscale) keyfile
   if use_userspace_tailscale; then
+    TS_HOSTNAME="${TS_HOSTNAME:-$TS_CONTAINER_HOSTNAME}"
     start_userspace_tailscaled
     ts_cmd=(tailscale --socket="$TS_SOCKET")
     up_cmd=("${ts_cmd[@]}")

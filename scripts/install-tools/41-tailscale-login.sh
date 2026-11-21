@@ -15,6 +15,7 @@ login_tailscale() {
   tailscale_auth_available || { echo "tailscale: skipped login (no TS_AUTH_KEY or BWS_ACCESS_TOKEN)"; return; }
   local ts_cmd=(tailscale) up_cmd=(sudo tailscale) keyfile
   if use_userspace_tailscale; then
+    TS_HOSTNAME="${TS_HOSTNAME:-$TS_CONTAINER_HOSTNAME}"
     start_userspace_tailscaled
     ts_cmd=(tailscale --socket="$TS_SOCKET")
     up_cmd=("${ts_cmd[@]}")

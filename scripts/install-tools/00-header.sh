@@ -16,7 +16,8 @@
 #              ~/.bashrc / ~/.zshrc also get `mise activate`, so mise tools (and their node) are on PATH.
 #   browse     uses BB_API_KEY, read from the bws secret of that name.
 #   tailscale  logs in with the TS_AUTH_KEY env var, else the TS_AUTH_KEY bws secret.
-#              Set TS_HOSTNAME to give the node a fixed tailnet name (default: the machine hostname).
+#              Set TS_HOSTNAME to give the node a fixed tailnet name (default: claude-cloud in
+#              userspace/container mode, else the machine hostname).
 #   pipimcp/pipicli  use PIPIMCP_PR_WORKSPACE_TOKEN: env var, else ~/.config/pipimcp/pr-workspace.token,
 #              else the bws secret of that name. This script only reports which source is found.
 # Without BWS_ACCESS_TOKEN (or TS_AUTH_KEY for tailscale) the tools are installed but not authenticated.

@@ -1,3 +1,4 @@
+TS_CONTAINER_HOSTNAME="claude-cloud"
 TS_STATE_DIR="${TS_STATE_DIR:-$HOME/.local/share/tailscale}"
 TS_SOCKET="$TS_STATE_DIR/tailscaled.sock"
 
