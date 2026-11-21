@@ -20,6 +20,7 @@ install-tools --doctor   # read-only health check
 
 - mise installs the package through its `pipx:` backend, which uses `uv` when it is installed and `pipx` otherwise. Pin a version with `mise use -g pipx:huyab-install-tools@1.1.0`. To use it in one project only, leave out `-g`; mise writes it to `mise.toml`.
 - Version 1.1.0 and later install two commands, `install-tools` and `huyab-install-tools`, so `pipx run huyab-install-tools --doctor` also works. Older versions have only `install-tools`; use the `--spec` form above.
+- Version 1.1.1 and later also install the short command `itools`, the same as `install-tools`. `curl -fsSL https://raw.githubusercontent.com/nguyenhuy158/huyabhome/main/scripts/itools.sh | bash` runs the script the same way as the `install-tools.sh` URL, which stays.
 - With pipx and mise the commands are not on `PATH` until you run `pipx ensurepath` or `mise activate` (see their docs), once per machine.
 
 ## Doctor
