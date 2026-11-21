@@ -6,6 +6,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { fetchOdooFields, fetchOdooModels, type OdooField, type OdooModel } from "../../utils/odoo";
 import { useLocalStorageHistory } from "../../utils/history";
 import { HistorySection } from "../../components/HistorySection";
+import { Button } from "../../ui/Button";
 
 export function meta() {
   return [
@@ -270,16 +271,17 @@ export default function OdooInspector() {
                 )}
               </div>
 
-              <button
+              <Button
                 type="submit"
                 name="intent"
                 value="inspect"
+                block
+                className="mt-4"
                 disabled={isInspectLoading || isModelsLoading}
-                className="w-full px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+                leftIcon={isInspectLoading ? <RotateCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               >
-                {isInspectLoading ? <RotateCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                 {t("odoo_inspector.actions.inspect")}
-              </button>
+              </Button>
 
               {actionData?.error && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm flex items-start gap-2">

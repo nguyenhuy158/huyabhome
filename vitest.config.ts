@@ -24,6 +24,10 @@ export default defineConfig({
     alias: {
       "~": path.resolve(__dirname, "./app"),
       "@": path.resolve(__dirname, "./app"),
+      "virtual:react-router/server-build": path.resolve(
+        __dirname,
+        "./__tests__/stubs/server-build.ts",
+      ),
     },
   },
 });

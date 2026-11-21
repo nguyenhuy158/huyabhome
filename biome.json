@@ -2,6 +2,6 @@
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "extends": ["@huyab/config/biome.json"],
   "files": {
-    "includes": ["!public"]
+    "includes": ["!public", "!workers/build-info.generated.ts"]
   }
 }

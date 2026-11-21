@@ -93,6 +93,15 @@ try {
   await get("/definitely-not-a-route", 404, { "user-agent": "Mozilla/5.0" });
   ok("unknown route returns 404");
 
+  // 2a. Deploy-check routes: public, GET only, answered before the app.
+  const version = await (await get("/api/version", 200)).json();
+  if (typeof version.commit !== "string" || version.commit === "")
+    throw new Error("/api/version: commit is empty");
+  ok(`/api/version reports commit ${version.shortCommit}`);
+  const health = await (await get("/api/health", 200)).json();
+  if (health.ok !== true) throw new Error("/api/health: ok is not true");
+  ok("/api/health reports ok");
+
   // 2b. The games moved to games.huyab.cfd: old links redirect there.
   //     `wrangler dev` rewrites the huyab.cfd zone in Location headers to
   //     the local host, so locally the target reads games.127.0.0.1:<port>.
