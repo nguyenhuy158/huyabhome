@@ -36,3 +36,7 @@ e2e-failure.png
 {{HOMEBREW_PREFIX}}/
 
 openspec/changes/archive
+
+# Python packaging
+*.egg-info/
+__pycache__/

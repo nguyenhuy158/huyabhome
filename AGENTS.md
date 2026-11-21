@@ -30,6 +30,8 @@ __tests__/                     # Vitest suites (components, routes, utils, worke
 e2e/                           # E2E smoke (playwright-core): run.mjs, readonly-smoke.mjs, ui-smoke.mjs
 public/                        # Static assets, PWA icons, project screenshots
 scripts/refresh-project-shots.mjs  # Regenerate public/projects/*.png
+scripts/install-tools/         # Parts of install-tools.sh (built into scripts/install-tools.sh)
+python/                        # pip package huyab-install-tools (bundles the built install-tools.sh)
 wrangler.jsonc                 # Worker config: KV, D1, Durable Objects, routes
 pnpm-workspace.yaml            # pnpm 10/11 compatibility (see Deploy & CI)
 ```
@@ -68,7 +70,10 @@ How this repo fits with the others:
   `scripts/install-tools.sh`. Edit the parts, never the built file: the
   install command is `curl ... install-tools.sh | bash`, so it must stay one
   file. A test fails when the built file is out of date, a part is over 100
-  lines or a function over 30.
+  lines or a function over 30. The same command copies the script into
+  `python/src/install_tools/`. Python tests: `python3 -m unittest discover -s
+  python/tests` (also run by `pnpm test:run`); wheel: `python -m build python/`.
+  Version 1.0.0 is not published to PyPI.
 - `pnpm e2e`: build, serve with `wrangler dev --local`, run the E2E smoke;
   `pnpm e2e:prod`: the read-only part against `https://huyab.cfd`.
 

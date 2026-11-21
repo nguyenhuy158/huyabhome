@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "huyab-install-tools"
+version = "1.0.0"
+description = "Install the dev tools of a huyab machine with one command: bws, gh, mise, cf, wrangler, biome, cloudflared, browse, gitleaks, tailscale, pipiops."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+install-tools = "install_tools.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+install_tools = ["install-tools.sh"]
