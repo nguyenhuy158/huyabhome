@@ -83,6 +83,10 @@ How this repo fits with the others:
   A new tool or step needs a check there. The package installs with pip,
   `pipx install` and `mise use -g pipx:huyab-install-tools`; see
   `python/README.md`.
+  Tailscale logs in with `TS_AUTH_KEY` (env var, else the bws secret). `TS_HOSTNAME`
+  sets the node name; in userspace (container) mode the default is `claude-cloud`.
+  The `shell-env` step also adds `mise activate` to `~/.bashrc` and `~/.zshrc`, so
+  tools installed with mise, and the Node they need, are on PATH in new shells.
 - `pnpm e2e`: build, serve with `wrangler dev --local`, run the E2E smoke;
   `pnpm e2e:prod`: the read-only part against `https://huyab.cfd`.
 
